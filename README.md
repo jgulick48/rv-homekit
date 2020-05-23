@@ -7,7 +7,7 @@ your own WiFi network if they are separate.
 
 ## Installation
 
-First you need to prepare a RaspberryPi as your host for the application. The OS that I'm using myself is [Ubuntu 20.04 server](https://ubuntu.com/download/raspberry-pi).
+First you need to prepare a RaspberryPi as your host for the application. The OS that I'm using myself is [Ubuntu 20.04 server](https://ubuntu.com/download/raspberry-pi). You will need to use a RaspberryPi 3 or 4 and the 64 bit version of Ubuntu.
 
 If you have a separate WiFi network that you use for your devices configure the wireless on the pi to connect to that network.
 
