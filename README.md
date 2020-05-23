@@ -9,7 +9,9 @@ your own WiFi network if they are separate.
 
 First you need to prepare a RaspberryPi as your host for the application. The OS that I'm using myself is [Ubuntu 20.04 server](https://ubuntu.com/download/raspberry-pi).
 
-If you have a separate WiFi network that you use for your devices configure the wireless on the pi to connect to that network
+If you have a separate WiFi network that you use for your devices configure the wireless on the pi to connect to that network.
+
+Download the rv-homekit app from https://github.com/jgulick48/rv-homekit/releases/download/v0.0.1/rv-homekit and save it in its own directory.
 
 ## Configuration
 
@@ -30,4 +32,10 @@ Here's an example config.
 }
 ```
 
+# Running
+
+Initially running is done like a regular application. Enter the folder where you downloaded rv-homekit and created the config.json file and run `./rv-homekit`
+
+If you wish to run this unattended use nohup to keep the application running after closing the ssh session.
+`nohup ./rv-homekit`
 
