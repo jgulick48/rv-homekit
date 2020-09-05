@@ -19,6 +19,7 @@ type Config struct {
 	BridgeName    string `json:"bridgeName"`
 	OpenHabServer string `json:"openHabServer"`
 	PIN           string `json:"pin"`
+	Port          string `json:"port"`
 }
 
 func main() {
@@ -75,6 +76,16 @@ func main() {
 			accessories = registerThermostat(id, thing, habClient, accessories)
 			continue
 		}
+		if thing.ThingTypeUID == "idsmyrv:generator-thing" {
+			id, ok := itemIDs[thing.UID]
+			if !ok {
+				maxID++
+				id = maxID
+				itemIDs[thing.UID] = id
+			}
+			accessories = registerGenerator(id, thing, habClient, accessories)
+			continue
+		}
 		for _, channel := range thing.Channels {
 			registrationMethod, valid := getRegistrationMethod(channel)
 			if valid {
@@ -110,6 +121,9 @@ func main() {
 	hcConfig := hc.Config{
 		Pin: config.PIN,
 	}
+	if config.Port != "" {
+		hcConfig.Port = config.Port
+	}
 	t, err := hc.NewIPTransport(hcConfig, bridge.Accessory, accessories...)
 	if err != nil {
 		log.Panic(err)
@@ -127,13 +141,19 @@ func registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name string, acc
 		ID:   id,
 	})
 	go func() {
-		lastState := ""
-		if item.State != lastState {
-			level, err := strconv.ParseFloat(item.State, 64)
-			if err == nil {
-				ac.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
-			}
+		for {
+			lastState := ""
+			if item.State != lastState {
+				level, err := strconv.ParseFloat(item.State, 64)
+				if err == nil {
+					log.Printf("Got new value for %s of %v", name, level)
+					ac.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
+				}
+				lastState = item.State
 
+			}
+			time.Sleep(10 * time.Second)
+			item.GetCurrentValue()
 		}
 	}()
 	ac.HumiditySensor.CurrentRelativeHumidity.SetMinValue(0)
@@ -163,6 +183,43 @@ func registerLightBulb(id uint64, item openHab.EnrichedItemDTO, name string, acc
 	return accessories
 }
 
+func registerGenerator(id uint64, thing openHab.EnrichedThingDTO, client openHab.Client, accessories []*accessory.Accessory) []*accessory.Accessory {
+	log.Printf("Initializing Generator.")
+	ac := accessory.NewSwitch(accessory.Info{
+		Name: thing.Label,
+		ID:   id,
+	})
+	channels := make(map[string]openHab.ChannelDTO)
+	for _, channel := range thing.Channels {
+		channels[channel.UID] = channel
+	}
+	startStopThing, ok := getThingFromChannels(channels, thing.UID, "command", client)
+	if !ok {
+		log.Printf("Unable to get switch for %s, skipping generator.", thing.UID)
+		return accessories
+	}
+	stateThing, ok := getThingFromChannels(channels, thing.UID, "state", client)
+	if !ok {
+		log.Printf("Unable to get current state for %s, skipping generator.", thing.UID)
+		return accessories
+	}
+	ac.Switch.On.OnValueRemoteUpdate(startStopThing.GetChangeFunction())
+	go func() {
+		lastValue := ""
+		for {
+			if stateThing.State != lastValue {
+				ac.Switch.On.SetValue(stateThing.State == "RUNNING")
+				log.Printf("Got state for generator of %s", stateThing.State)
+			}
+			time.Sleep(10 * time.Second)
+			stateThing.GetCurrentValue()
+			log.Printf("Got state value of %s for %s", stateThing.State, thing.Label)
+		}
+	}()
+	accessories = append(accessories, ac.Accessory)
+	return accessories
+}
+
 func registerSwitch(id uint64, item openHab.EnrichedItemDTO, name string, accessories []*accessory.Accessory) []*accessory.Accessory {
 	ac := accessory.NewSwitch(accessory.Info{
 		Name: name,
@@ -177,6 +234,7 @@ func registerSwitch(id uint64, item openHab.EnrichedItemDTO, name string, access
 			}
 			time.Sleep(10 * time.Second)
 			item.GetCurrentValue()
+			log.Printf("Got switch value of %s for %s", item.State, name)
 		}
 	}()
 	accessories = append(accessories, ac.Accessory)
@@ -323,6 +381,7 @@ func registerThermostat(id uint64, thing openHab.EnrichedThingDTO, client openHa
 					if units == 1 {
 						currentTemp = (currentTemp - 32) / 1.8
 					}
+					log.Printf("New temp for %s %v", thing.Label, currentTemp)
 					ac.Thermostat.CurrentTemperature.SetValue(currentTemp)
 				}
 			}
