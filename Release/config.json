@@ -1,0 +1,18 @@
+{
+  "bridgeName": "Big Blue",
+  "openHabServer": "http://192.168.1.4:8080",
+  "pin": "00102003",
+  "port": "12321",
+  "bmvConfig": {
+    "device": "/dev/ttyUSB0",
+    "baud": 19200
+  },
+  "automation": {
+    "generator": {
+      "lowValue": 10,
+      "highValue": 99.9,
+      "offDelay": "5m",
+      "coolDown": "30m"
+    }
+  }
+}
