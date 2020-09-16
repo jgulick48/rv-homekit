@@ -414,6 +414,11 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		currentHVACMode := ""
 		currentHighTempState := ""
 		currentLowTempState := ""
+		currentTempThing.GetCurrentValue()
+		statusThing.GetCurrentValue()
+		modeThing.GetCurrentValue()
+		lowTempThing.GetCurrentValue()
+		highTempThing.GetCurrentValue()
 		var currentTemp float64
 		for {
 			if currentTempState != currentTempThing.State {
@@ -472,17 +477,12 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 				}
 			}
 
-			time.Sleep(10 * time.Second)
-			currentTempThing.GetCurrentValue()
 			currentTempState = currentTempThing.State
-			statusThing.GetCurrentValue()
 			currentHVACState = statusThing.State
-			modeThing.GetCurrentValue()
 			currentHVACMode = modeThing.State
-			lowTempThing.GetCurrentValue()
 			currentLowTempState = lowTempThing.State
-			highTempThing.GetCurrentValue()
 			currentHighTempState = highTempThing.State
+			time.Sleep(10 * time.Second)
 		}
 	}()
 	ac.Thermostat.TemperatureDisplayUnits.SetValue(1)
