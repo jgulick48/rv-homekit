@@ -13,6 +13,14 @@ If you have a separate WiFi network that you use for your devices configure the 
 
 Download the rv-homekit app from https://github.com/jgulick48/rv-homekit/releases/download/v0.0.1/rv-homekit and save it in its own directory.
 
+## Building
+
+If you are building from the source code for a Raspberry Pi you will want to use the following command.
+
+```
+env GOOS=linux GOARCH=arm GOARM=5 go build
+```
+
 ## Configuration
 
 There are a few settings that need to be configured and saved in a config.json file in the same directory as the application.

@@ -31,8 +31,10 @@ type BMVConfig struct {
 }
 
 type Automation struct {
-	HighValue float64
-	LowValue  float64
+	HighValue float64 `json:"highValue"`
+	LowValue  float64 `json:"lowValue"`
+	OffDelay  string  `json:"offDelay"`
+	CoolDown  string  `json:"coolDown"`
 }
 
 type client struct {
@@ -262,7 +264,9 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), stateFunc)
+			coolDown, _ := time.ParseDuration(config.CoolDown)
+			delay, _ := time.ParseDuration(config.OffDelay)
+			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, delay, coolDown, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), stateFunc)
 		}
 	}
 	accessories = append(accessories, ac.Accessory)
