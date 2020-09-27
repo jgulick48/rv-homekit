@@ -19,6 +19,7 @@ type ClientConfig struct {
 type Client interface {
 	Close()
 	GetBatteryStateOfCharge() (float64, bool)
+	GetBatteryCurrent() (float64, bool)
 }
 
 type client struct {
@@ -101,6 +102,21 @@ func (c *client) GetBatteryStateOfCharge() (float64, bool) {
 		return soc / 10, true
 	} else {
 		log.Printf("%v", c.data)
+	}
+	return 0, false
+}
+
+func (c *client) GetBatteryCurrent() (float64, bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	value, ok := c.data["I"]
+	if ok {
+		current, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Printf("Error parsing value from map: %s", err.Error())
+			return 0, false
+		}
+		return current / 1000, true
 	}
 	return 0, false
 }

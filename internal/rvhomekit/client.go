@@ -47,8 +47,11 @@ type Client interface {
 	GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []*accessory.Accessory
 }
 
-func LoadClientConfig() Config {
-	configFile, err := ioutil.ReadFile("./config.json")
+func LoadClientConfig(filename string) Config {
+	if filename == "" {
+		filename = "./config.json"
+	}
+	configFile, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Printf("No config file found. Making new IDs")
 		panic(err)
@@ -251,7 +254,34 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	stateFunc := func() bool {
 		return stateThing.State == "RUNNING" || stateThing.State == "PRIMING"
 	}
+	if c.bmvClient != nil {
+		ac.AddBatteryLevel()
+	}
 	go func() {
+		if c.bmvClient != nil {
+			bmvClient := *c.bmvClient
+			var lastState float64
+			var lastCurrent float64
+			for {
+				if soc, ok := bmvClient.GetBatteryStateOfCharge(); ok && soc != lastState {
+					ac.Battery.BatteryLevel.SetValue(int(soc))
+					if soc < 10 {
+						ac.Battery.StatusLowBattery.SetValue(1)
+					} else {
+						ac.Battery.StatusLowBattery.SetValue(0)
+					}
+					lastState = soc
+				}
+				if current, ok := bmvClient.GetBatteryCurrent(); ok && current != lastCurrent {
+					chargeState := 0
+					if current > 0 {
+						chargeState = 1
+					}
+					ac.Battery.ChargingState.SetValue(chargeState)
+				}
+				time.Sleep(10 * time.Second)
+			}
+		}
 		lastValue := ""
 		for {
 			if stateThing.State != lastValue {
@@ -418,13 +448,13 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		currentHVACMode := ""
 		currentHighTempState := ""
 		currentLowTempState := ""
-		currentTempThing.GetCurrentValue()
-		statusThing.GetCurrentValue()
-		modeThing.GetCurrentValue()
-		lowTempThing.GetCurrentValue()
-		highTempThing.GetCurrentValue()
 		var currentTemp float64
 		for {
+			currentTempThing.GetCurrentValue()
+			statusThing.GetCurrentValue()
+			modeThing.GetCurrentValue()
+			lowTempThing.GetCurrentValue()
+			highTempThing.GetCurrentValue()
 			if currentTempState != currentTempThing.State {
 				switch currentTempThing.Pattern {
 				case "%d °F":

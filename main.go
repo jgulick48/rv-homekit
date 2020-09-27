@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"os"
 
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
@@ -12,7 +14,14 @@ import (
 )
 
 func main() {
-	config := rvhomekit.LoadClientConfig()
+	path, err := os.Getwd()
+	if err != nil {
+		log.Println(err)
+	}
+	log.Print(path)
+	configLocation := flag.String("configFile", "./config.json", "Location for the configuration file.")
+	flag.Parse()
+	config := rvhomekit.LoadClientConfig(*configLocation)
 	var bmvClient *bmv.Client
 	if config.BMVConfig.Device != "" {
 		config := bmv.ClientConfig{

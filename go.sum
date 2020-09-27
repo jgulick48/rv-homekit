@@ -13,6 +13,16 @@ github.com/jgulick48/hc v1.2.6-rc1 h1:CXkXOGkW9zXoN6ZqUYqW7QBl/pacwd5NQmruzB+sjb
 github.com/jgulick48/hc v1.2.6-rc1/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
 github.com/jgulick48/hc v1.2.6-rc1.1 h1:pfUS0R9JvyHr38iHtKm5sUUjeOeoDG96setuuDn3/ZI=
 github.com/jgulick48/hc v1.2.6-rc1.1/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
+github.com/jgulick48/hc v1.2.6-rc1.3 h1:ngi3VaptDgxbyuT+voYWRaDYqVMIIS2n7ETQMuUuih4=
+github.com/jgulick48/hc v1.2.6-rc1.3/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
+github.com/jgulick48/hc v1.2.6-rc1.4.1 h1:kW7zY784OMbcolgdEKC8hGdv8q6uHM5nIXOd5BtxvqI=
+github.com/jgulick48/hc v1.2.6-rc1.4.1/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
+github.com/jgulick48/hc v1.2.6-rc1.4.2 h1:1zPqXYnH3jy5Ji7vfInvbi3znOR8BYLRdHoQb242OYI=
+github.com/jgulick48/hc v1.2.6-rc1.4.2/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
+github.com/jgulick48/hc v1.2.6-rc1.4.3 h1:U/y50BasfJqTTvCcvG6Hge3kfmCV+Bliie8x81Ibxx4=
+github.com/jgulick48/hc v1.2.6-rc1.4.3/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
+github.com/jgulick48/hc v1.2.6-rc1.4.4 h1:qHlrIvsJPpRVJmqvlINqhSpZWTCqTz8vFUPjnVXvBRo=
+github.com/jgulick48/hc v1.2.6-rc1.4.4/go.mod h1:TmCRFGWLU/0tZT7DeEBfPTney0E4gwQ4aW26YQD5b20=
 github.com/miekg/dns v1.1.1/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 github.com/miekg/dns v1.1.4 h1:rCMZsU2ScVSYcAsOXgmC6+AKOK+6pmQTOcw03nfwYV0=
 github.com/miekg/dns v1.1.4/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=

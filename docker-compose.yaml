@@ -1,0 +1,9 @@
+version: "3.0"
+services:
+  rv-homekit:
+    image: jgulick48/rv-homekit:0.0.4
+    ports:
+      - "12321:12321"
+    volumes:
+      - /var/lib/rv-homekit/:/var/lib/rv-homekit/
+      - /dev/ttyUSB0:/dev/ttyUSB0
