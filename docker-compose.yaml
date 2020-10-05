@@ -6,4 +6,5 @@ services:
       - "12321:12321"
     volumes:
       - /var/lib/rv-homekit/:/var/lib/rv-homekit/
+    devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
