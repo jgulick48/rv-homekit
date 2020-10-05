@@ -91,10 +91,14 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 		}
 	}
 	accessories := make([]*accessory.Accessory, 0)
-	accessories, ok := c.registerBatteryLevel(maxID, "House Battery", accessories)
-	if ok {
-		itemIDs["House Battery"] = maxID
+	id, ok := itemIDs["House Battery"]
+	if !ok {
+		id = maxID
 		maxID++
+	}
+	accessories, ok = c.registerBatteryLevel(id, "House Battery", accessories)
+	if ok {
+		itemIDs["House Battery"] = id
 	}
 	for _, thing := range things {
 		if !thing.Editable {

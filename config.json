@@ -1,0 +1,5 @@
+{
+  "bridgeName": "My RV",
+  "openHabServer": "http://192.168.1.4:8080",
+  "pin": "00102003"
+}
