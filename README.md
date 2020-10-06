@@ -53,9 +53,9 @@ If you wish to run this unattended use nohup to keep the application running aft
 
 Make a directory for the application to store its configuration and item information. One example would be `/var/lib/rv-homekit`. Download the config.json file to this location using the following command `wget https://raw.githubusercontent.com/jgulick48/rv-homekit/master/config.json` This config file needs to be mounted as a volume in the container under `/var/lib/rv-homekit` If running on a raspberryPi use the arm release of the docker image. An example command is as follows:
 ```
-docker run -d --volume /var/lib/rv-homekit/:/var/lib/rv-homekit/ --network host jgulick48/rv-homekit:arm-latest
+docker run -d --volume /var/lib/rv-homekit/:/var/lib/rv-homekit/ --expose 12321:12321 --network host jgulick48/rv-homekit:arm-latest
 ```
 If you have a V.E. Direct serial cable hooked up to the unit add this as a device to the docker container.
 ```
-docker run -d --volume /var/lib/rv-homekit/:/var/lib/rv-homekit/ --device /dev/ttyUSB0:/dev/ttyUSB0 --network host jgulick48/rv-homekit:arm-latest
+docker run -d --volume /var/lib/rv-homekit/:/var/lib/rv-homekit/ --device /dev/ttyUSB0:/dev/ttyUSB0 --expose 12321:12321 --network host jgulick48/rv-homekit:arm-latest
 ```
