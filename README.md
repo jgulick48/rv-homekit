@@ -5,6 +5,8 @@ rv-homekit is a small GO app used to act as a proxy/adapter between the OneContr
 It is designed to be able to run on a raspberry pi plugged into the ethernet port on the OneControl gateway and joined to 
 your own WiFi network if they are separate.
 
+![Home](./images/home.png) ![Utilities](./images/utilities.png) ![Tank Levels](./images/tankLevels.png)
+
 ## Installation
 
 First you need to prepare a RaspberryPi as your host for the application. The OS that I'm using myself is [Ubuntu 20.04 server](https://ubuntu.com/download/raspberry-pi). You will need to use a RaspberryPi 3 or 4 and the 64 bit version of Ubuntu.
