@@ -8,8 +8,8 @@ import (
 func AutomateGeneratorStart(highValue float64, lowValue float64, delay time.Duration, coolDown time.Duration, socFunc func() (float64, bool), switchFunc func(bool), stateFunc func() bool) {
 	go func() {
 		automationTriggered := false
+		var lastStopped time.Time
 		for {
-			var lastStopped time.Time
 			time.Sleep(time.Second * 10)
 			state, ok := socFunc()
 			if !ok {

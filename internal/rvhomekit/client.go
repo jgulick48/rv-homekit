@@ -256,6 +256,11 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	}
 	ac.Switch.On.OnValueRemoteUpdate(startStopThing.GetChangeFunction())
 	stateFunc := func() bool {
+		stateThing, ok := getThingFromChannels(channels, thing.UID, "state", c.habClient)
+		if !ok {
+			log.Printf("Unable to get current state for %s, skipping generator.", thing.UID)
+			return false
+		}
 		return stateThing.State == "RUNNING" || stateThing.State == "PRIMING"
 	}
 	if c.bmvClient != nil {
