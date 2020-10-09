@@ -255,14 +255,6 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		return accessories
 	}
 	ac.Switch.On.OnValueRemoteUpdate(startStopThing.GetChangeFunction())
-	stateFunc := func() bool {
-		stateThing, ok := getThingFromChannels(channels, thing.UID, "state", c.habClient)
-		if !ok {
-			log.Printf("Unable to get current state for %s, skipping generator.", thing.UID)
-			return false
-		}
-		return stateThing.State == "RUNNING" || stateThing.State == "PRIMING"
-	}
 	if c.bmvClient != nil {
 		ac.AddBatteryLevel()
 	}
@@ -294,7 +286,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		lastValue := ""
 		for {
 			if stateThing.State != lastValue {
-				ac.Switch.On.SetValue(stateFunc())
+				ac.Switch.On.SetValue(startStopThing.GetCurrentState())
 			}
 			time.Sleep(10 * time.Second)
 			stateThing.GetCurrentValue()
@@ -305,7 +297,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		if config, ok := c.config.Automation["generator"]; ok {
 			coolDown, _ := time.ParseDuration(config.CoolDown)
 			delay, _ := time.ParseDuration(config.OffDelay)
-			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, delay, coolDown, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), stateFunc)
+			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, delay, coolDown, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), startStopThing.GetCurrentState)
 		}
 	}
 	accessories = append(accessories, ac.Accessory)

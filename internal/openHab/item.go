@@ -163,3 +163,13 @@ func (i *EnrichedItemDTO) GetCurrentValue() {
 		return
 	}
 }
+
+func (i *EnrichedItemDTO) GetCurrentState() bool {
+	i.GetCurrentValue()
+	switch i.State {
+	case "RUNNING", "PRIMING", "ON":
+		return true
+	default:
+		return false
+	}
+}
