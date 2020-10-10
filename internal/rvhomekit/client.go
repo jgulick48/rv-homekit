@@ -13,32 +13,13 @@ import (
 
 	"github.com/jgulick48/rv-homekit/internal/automation"
 	"github.com/jgulick48/rv-homekit/internal/bmv"
+	"github.com/jgulick48/rv-homekit/internal/metrics"
+	"github.com/jgulick48/rv-homekit/internal/models"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
-type Config struct {
-	BridgeName    string                `json:"bridgeName"`
-	OpenHabServer string                `json:"openHabServer"`
-	PIN           string                `json:"pin"`
-	Port          string                `json:"port"`
-	BMVConfig     BMVConfig             `json:"bmvConfig"`
-	Automation    map[string]Automation `json:"automation"`
-}
-
-type BMVConfig struct {
-	Device string `json:"device"`
-	Baud   int    `json:"baud"`
-}
-
-type Automation struct {
-	HighValue float64 `json:"highValue"`
-	LowValue  float64 `json:"lowValue"`
-	OffDelay  string  `json:"offDelay"`
-	CoolDown  string  `json:"coolDown"`
-}
-
 type client struct {
-	config    Config
+	config    models.Config
 	habClient openHab.Client
 	bmvClient *bmv.Client
 }
@@ -47,7 +28,7 @@ type Client interface {
 	GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []*accessory.Accessory
 }
 
-func LoadClientConfig(filename string) Config {
+func LoadClientConfig(filename string) models.Config {
 	if filename == "" {
 		filename = "./config.json"
 	}
@@ -56,7 +37,7 @@ func LoadClientConfig(filename string) Config {
 		log.Printf("No config file found. Making new IDs")
 		panic(err)
 	}
-	var config Config
+	var config models.Config
 	err = json.Unmarshal(configFile, &config)
 	if err != nil {
 		log.Printf("Invliad config file provided")
@@ -65,7 +46,7 @@ func LoadClientConfig(filename string) Config {
 	return config
 }
 
-func NewClient(config Config, habClient openHab.Client, bmvClient *bmv.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client) Client {
 	return &client{
 		config:    config,
 		habClient: habClient,
@@ -172,9 +153,27 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 	go func() {
 		var lastState float64
 		for {
-			if soc, ok := bmvClient.GetBatteryStateOfCharge(); ok && soc != lastState {
+			soc, ok := bmvClient.GetBatteryStateOfCharge()
+			if ok && soc != lastState {
 				ac.HumiditySensor.CurrentRelativeHumidity.SetValue(soc)
 				lastState = soc
+			}
+			if metrics.StatsEnabled {
+				if ok {
+					_ = metrics.Metrics.Gauge("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
+				if current, ok := bmvClient.GetBatteryCurrent(); ok {
+					_ = metrics.Metrics.Gauge("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
+				if voltage, ok := bmvClient.GetBatteryVoltage(); ok {
+					_ = metrics.Metrics.Gauge("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
+				if amps, ok := bmvClient.GetConsumedAmpHours(); ok {
+					_ = metrics.Metrics.Gauge("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
+				if watts, ok := bmvClient.GetPower(); ok {
+					_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
 			}
 			time.Sleep(10 * time.Second)
 		}
@@ -193,17 +192,19 @@ func (c *client) registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name
 	go func() {
 		for {
 			lastState := ""
+			item.GetCurrentValue()
+			level, err := strconv.ParseFloat(item.State, 64)
+			if err == nil && metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
 			if item.State != lastState {
-				level, err := strconv.ParseFloat(item.State, 64)
 				if err == nil {
 					ac.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
 				}
 				lastState = item.State
-
 			}
 			time.Sleep(10 * time.Second)
 			lastState = item.State
-			item.GetCurrentValue()
 
 		}
 	}()
@@ -283,10 +284,15 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 				time.Sleep(10 * time.Second)
 			}
 		}
+	}()
+	go func() {
 		lastValue := ""
 		for {
 			if stateThing.State != lastValue {
-				ac.Switch.On.SetValue(startStopThing.GetCurrentState())
+				ac.Switch.On.SetValue(stateThing.GetCurrentState())
+			}
+			if metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
 			}
 			time.Sleep(10 * time.Second)
 			stateThing.GetCurrentValue()
@@ -443,6 +449,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		Name: thing.Label,
 		ID:   id,
 	}, currentTemp, 10, 38, steps)
+	metricName := strings.Split(thing.Label, " ")
 	go func() {
 		currentTempState := ""
 		currentHVACState := ""
@@ -456,28 +463,41 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 			modeThing.GetCurrentValue()
 			lowTempThing.GetCurrentValue()
 			highTempThing.GetCurrentValue()
-			if currentTempState != currentTempThing.State {
-				switch currentTempThing.Pattern {
-				case "%d °F":
-					units = 1
-					break
+			switch currentTempThing.Pattern {
+			case "%d °F":
+				units = 1
+				break
+			}
+			currentTemp, err = strconv.ParseFloat(currentTempThing.State, 64)
+			if err != nil {
+				log.Printf("Invalid state for current temprature. Got %s", currentTempThing.State)
+			} else {
+				if metrics.StatsEnabled {
+					_ = metrics.Metrics.Gauge("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 				}
-				currentTemp, err = strconv.ParseFloat(currentTempThing.State, 64)
-				if err != nil {
-					log.Printf("Invalid state for current temprature. Got %s", currentTempThing.State)
-				} else {
-					if units == 1 {
-						currentTemp = (currentTemp - 32) / 1.8
-					}
+				if units == 1 {
+					currentTemp = (currentTemp - 32) / 1.8
+				}
+
+				if currentTempState != currentTempThing.State {
 					log.Printf("New temp for %s %v", thing.Label, currentTemp)
 					ac.Thermostat.CurrentTemperature.SetValue(currentTemp)
 				}
+
+			}
+			currentStatus := c.getHVACStatusFromString(statusThing.State)
+			if metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 			}
 			if currentHVACState != statusThing.State {
-				ac.Thermostat.CurrentHeatingCoolingState.SetValue(c.getHVACStatusFromString(statusThing.State))
+				ac.Thermostat.CurrentHeatingCoolingState.SetValue(currentStatus)
+			}
+			currentMode := getHVACModeFromString(modeThing.State)
+			if metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 			}
 			if currentHVACMode != modeThing.State {
-				ac.Thermostat.TargetHeatingCoolingState.SetValue(getHVACModeFromString(modeThing.State))
+				ac.Thermostat.TargetHeatingCoolingState.SetValue(currentMode)
 			}
 			if currentHighTempState != highTempThing.State || currentLowTempState != lowTempThing.State {
 				highTemp, err := strconv.ParseFloat(highTempThing.State, 64)
@@ -585,6 +605,23 @@ func (c *client) getRegistrationMethod(channel openHab.ChannelDTO) (func(id uint
 	}
 }
 
+func (c *client) getGeneratorStatusFromString(status string) int {
+	switch status {
+	case "OFF":
+		return 0
+	case "PRIMING":
+		return 1
+	case "STARTING":
+		return 2
+	case "RUNNING":
+		return 3
+	case "STOPPING":
+		return 4
+	default:
+		return 0
+	}
+}
+
 func (c *client) getHVACStatusFromString(status string) int {
 	switch status {
 	case "OFF", "IDLE":
@@ -593,6 +630,48 @@ func (c *client) getHVACStatusFromString(status string) int {
 		return 2
 	case "HEAT_PUMP", "ELEC_FURNACE", "GAS_FURNACE", "GAS_OVERRIDE":
 		return 1
+	default:
+		return 0
+	}
+}
+func (c *client) getHVACStatusNameFromString(status string) int {
+	switch status {
+	case "OFF":
+		return 0
+	case "IDLE":
+		return 1
+	case "COOLING":
+		return 2
+	case "HEAT_PUMP":
+		return 3
+	case "ELEC_FURNACE":
+		return 4
+	case "GAS_FURNACE":
+		return 5
+	case "GAS_OVERRIDE":
+		return 6
+	case "DEAD_TIME":
+		return 7
+	case "LOAD_SHEDDING":
+		return 8
+	case "FAIL_OFF":
+		return 9
+	case "FAIL_IDLE":
+		return 10
+	case "FAIL_COOLING":
+		return 11
+	case "FAIL_HEAT_PUMP":
+		return 12
+	case "FAIL_ELEC_FURNACE":
+		return 13
+	case "FAIL_GAS_FURNACE":
+		return 14
+	case "FAIL_GAS_OVERRIDE":
+		return 15
+	case "FAIL_DEAD_TIME":
+		return 16
+	case "FAIL_SHEDDING":
+		return 17
 	default:
 		return 0
 	}

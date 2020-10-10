@@ -9,27 +9,33 @@ import (
 	"time"
 
 	"github.com/tarm/serial"
+
+	"github.com/jgulick48/rv-homekit/internal/models"
 )
 
 type ClientConfig struct {
 	DeviceName string
 	Baud       int
+	Name       string
 }
 
 type Client interface {
 	Close()
 	GetBatteryStateOfCharge() (float64, bool)
 	GetBatteryCurrent() (float64, bool)
+	GetBatteryVoltage() (float64, bool)
+	GetConsumedAmpHours() (float64, bool)
+	GetPower() (float64, bool)
 }
 
 type client struct {
-	config  ClientConfig
+	config  models.BMVConfig
 	mux     sync.Mutex
 	data    map[string]string
 	closing bool
 }
 
-func NewClient(config ClientConfig) Client {
+func NewClient(config models.BMVConfig) Client {
 	c := client{
 		config:  config,
 		data:    make(map[string]string),
@@ -45,7 +51,7 @@ func (c *client) Close() {
 
 func (c *client) startDataAcquisition() {
 	sconf := &serial.Config{
-		Name:        c.config.DeviceName,
+		Name:        c.config.Device,
 		Baud:        c.config.Baud,
 		ReadTimeout: time.Second * 5,
 	}
@@ -119,4 +125,51 @@ func (c *client) GetBatteryCurrent() (float64, bool) {
 		return current / 1000, true
 	}
 	return 0, false
+}
+
+func (c *client) GetBatteryVoltage() (float64, bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	value, ok := c.data["V"]
+	if ok {
+		current, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Printf("Error parsing value from map: %s", err.Error())
+			return 0, false
+		}
+		return current / 1000, true
+	}
+	return 0, false
+}
+func (c *client) GetConsumedAmpHours() (float64, bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	value, ok := c.data["CE"]
+	if ok {
+		current, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Printf("Error parsing value from map: %s", err.Error())
+			return 0, false
+		}
+		return current / 1000, true
+	}
+	return 0, false
+}
+func (c *client) GetPower() (float64, bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	value, ok := c.data["P"]
+	if ok {
+		current, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Printf("Error parsing value from map: %s", err.Error())
+			return 0, false
+		}
+		return current, true
+	}
+	return 0, false
+}
+
+func (c *client) GetDeviceName() string {
+	return c.config.Name
 }

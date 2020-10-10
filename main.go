@@ -3,12 +3,17 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 
+	"github.com/DataDog/datadog-go/statsd"
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
 
 	"github.com/jgulick48/rv-homekit/internal/bmv"
+	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 	"github.com/jgulick48/rv-homekit/internal/rvhomekit"
 )
@@ -22,13 +27,17 @@ func main() {
 	configLocation := flag.String("configFile", "./config.json", "Location for the configuration file.")
 	flag.Parse()
 	config := rvhomekit.LoadClientConfig(*configLocation)
+	if config.StatsServer != "" {
+		metrics.Metrics, err = statsd.New(config.StatsServer)
+		if err != nil {
+			log.Printf("Error creating stats client %s", err.Error())
+		} else {
+			metrics.StatsEnabled = true
+		}
+	}
 	var bmvClient *bmv.Client
 	if config.BMVConfig.Device != "" {
-		config := bmv.ClientConfig{
-			DeviceName: config.BMVConfig.Device,
-			Baud:       config.BMVConfig.Baud,
-		}
-		client := bmv.NewClient(config)
+		client := bmv.NewClient(config.BMVConfig)
 		bmvClient = &client
 
 	}
@@ -57,6 +66,24 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
+	go func() {
+		origin, _ := url.Parse(config.OpenHabServer)
+
+		director := func(req *http.Request) {
+			req.Header.Add("X-Forwarded-Host", req.Host)
+			req.Header.Add("X-Origin-Host", origin.Host)
+			req.URL.Scheme = "http"
+			req.URL.Host = origin.Host
+		}
+
+		proxy := &httputil.ReverseProxy{Director: director}
+
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			proxy.ServeHTTP(w, r)
+		})
+
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
 	hc.OnTermination(func() {
 		<-t.Stop()
