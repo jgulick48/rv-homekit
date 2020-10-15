@@ -55,3 +55,66 @@ func (_m *MockClient) GetBatteryStateOfCharge() (float64, bool) {
 
 	return r0, r1
 }
+
+// GetBatteryVoltage provides a mock function with given fields:
+func (_m *MockClient) GetBatteryVoltage() (float64, bool) {
+	ret := _m.Called()
+
+	var r0 float64
+	if rf, ok := ret.Get(0).(func() float64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(float64)
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func() bool); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	return r0, r1
+}
+
+// GetConsumedAmpHours provides a mock function with given fields:
+func (_m *MockClient) GetConsumedAmpHours() (float64, bool) {
+	ret := _m.Called()
+
+	var r0 float64
+	if rf, ok := ret.Get(0).(func() float64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(float64)
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func() bool); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	return r0, r1
+}
+
+// GetPower provides a mock function with given fields:
+func (_m *MockClient) GetPower() (float64, bool) {
+	ret := _m.Called()
+
+	var r0 float64
+	if rf, ok := ret.Get(0).(func() float64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(float64)
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func() bool); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	return r0, r1
+}
