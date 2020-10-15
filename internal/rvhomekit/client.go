@@ -13,32 +13,12 @@ import (
 
 	"github.com/jgulick48/rv-homekit/internal/automation"
 	"github.com/jgulick48/rv-homekit/internal/bmv"
+	"github.com/jgulick48/rv-homekit/internal/models"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
-type Config struct {
-	BridgeName    string                `json:"bridgeName"`
-	OpenHabServer string                `json:"openHabServer"`
-	PIN           string                `json:"pin"`
-	Port          string                `json:"port"`
-	BMVConfig     BMVConfig             `json:"bmvConfig"`
-	Automation    map[string]Automation `json:"automation"`
-}
-
-type BMVConfig struct {
-	Device string `json:"device"`
-	Baud   int    `json:"baud"`
-}
-
-type Automation struct {
-	HighValue float64 `json:"highValue"`
-	LowValue  float64 `json:"lowValue"`
-	OffDelay  string  `json:"offDelay"`
-	CoolDown  string  `json:"coolDown"`
-}
-
 type client struct {
-	config    Config
+	config    models.Config
 	habClient openHab.Client
 	bmvClient *bmv.Client
 }
@@ -47,7 +27,7 @@ type Client interface {
 	GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []*accessory.Accessory
 }
 
-func LoadClientConfig(filename string) Config {
+func LoadClientConfig(filename string) models.Config {
 	if filename == "" {
 		filename = "./config.json"
 	}
@@ -56,7 +36,7 @@ func LoadClientConfig(filename string) Config {
 		log.Printf("No config file found. Making new IDs")
 		panic(err)
 	}
-	var config Config
+	var config models.Config
 	err = json.Unmarshal(configFile, &config)
 	if err != nil {
 		log.Printf("Invliad config file provided")
@@ -65,7 +45,7 @@ func LoadClientConfig(filename string) Config {
 	return config
 }
 
-func NewClient(config Config, habClient openHab.Client, bmvClient *bmv.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client) Client {
 	return &client{
 		config:    config,
 		habClient: habClient,
@@ -294,9 +274,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			coolDown, _ := time.ParseDuration(config.CoolDown)
-			delay, _ := time.ParseDuration(config.OffDelay)
-			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, delay, coolDown, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), stateFunc)
+			automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateFunc)
 		}
 	}
 	accessories = append(accessories, ac.Accessory)
