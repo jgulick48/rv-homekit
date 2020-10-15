@@ -301,9 +301,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			coolDown, _ := time.ParseDuration(config.CoolDown)
-			delay, _ := time.ParseDuration(config.OffDelay)
-			automation.AutomateGeneratorStart(config.HighValue, config.LowValue, delay, coolDown, bmvClient.GetBatteryStateOfCharge, startStopThing.GetChangeFunction(), startStopThing.GetCurrentState)
+			automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 		}
 	}
 	accessories = append(accessories, ac.Accessory)
