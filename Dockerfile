@@ -9,6 +9,8 @@ RUN go mod download
 
 COPY ./ ./
 
+RUN go test ./...
+
 RUN GOOS=linux CGO_ENABLED=0 go build
 
 FROM alpine:3.12.0
