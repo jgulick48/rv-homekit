@@ -7,13 +7,14 @@ import (
 )
 
 type Config struct {
-	BridgeName    string                `json:"bridgeName"`
-	OpenHabServer string                `json:"openHabServer"`
-	PIN           string                `json:"pin"`
-	Port          string                `json:"port"`
-	BMVConfig     BMVConfig             `json:"bmvConfig"`
-	Automation    map[string]Automation `json:"automation"`
-	StatsServer   string                `json:"statsServer"`
+	BridgeName      string                `json:"bridgeName"`
+	OpenHabServer   string                `json:"openHabServer"`
+	PIN             string                `json:"pin"`
+	Port            string                `json:"port"`
+	BMVConfig       BMVConfig             `json:"bmvConfig"`
+	Automation      map[string]Automation `json:"automation"`
+	StatsServer     string                `json:"statsServer"`
+	ThermostatRange TemperatureRange      `json:"thermostatRange"`
 }
 
 type BMVConfig struct {
@@ -30,6 +31,12 @@ type Automation struct {
 	MinOn            Duration `json:"minOn"`
 	MaxOn            Duration `json:"maxOn"`
 	MinChargeCurrent float64  `json:"minChargeCurrent"`
+}
+
+type TemperatureRange struct {
+	MinValue float64 `json:"minValue"`
+	MaxValue float64 `json:"maxValue"`
+	Unit     string  `json:"unit"`
 }
 
 type Duration struct {
