@@ -25,6 +25,7 @@ type Client interface {
 	GetBatteryCurrent() (float64, bool)
 	GetBatteryVoltage() (float64, bool)
 	GetConsumedAmpHours() (float64, bool)
+	GetBatteryTemperature() (float64, bool)
 	GetPower() (float64, bool)
 }
 
@@ -159,6 +160,21 @@ func (c *client) GetPower() (float64, bool) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	value, ok := c.data["P"]
+	if ok {
+		current, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Printf("Error parsing value from map: %s", err.Error())
+			return 0, false
+		}
+		return current, true
+	}
+	return 0, false
+}
+
+func (c *client) GetBatteryTemperature() (float64, bool) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	value, ok := c.data["T"]
 	if ok {
 		current, err := strconv.ParseFloat(value, 64)
 		if err != nil {

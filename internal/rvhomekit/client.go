@@ -443,10 +443,20 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 	if units == 1 {
 		steps = 1 / 1.8
 	}
+	var min, max float64
+	if c.config.ThermostatRange.MaxValue != 0 {
+		if c.config.ThermostatRange.Unit == "f" {
+			min = (c.config.ThermostatRange.MinValue - 32) / 1.8
+			max = (c.config.ThermostatRange.MaxValue - 32) / 1.8
+		} else {
+			min = c.config.ThermostatRange.MinValue
+			max = c.config.ThermostatRange.MaxValue
+		}
+	}
 	ac := accessory.NewThermostat(accessory.Info{
 		Name: thing.Label,
 		ID:   id,
-	}, currentTemp, 10, 38, steps)
+	}, currentTemp, min, max, steps)
 	metricName := strings.Split(thing.Label, " ")
 	go func() {
 		currentTempState := ""
