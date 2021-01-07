@@ -452,6 +452,9 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 			min = c.config.ThermostatRange.MinValue
 			max = c.config.ThermostatRange.MaxValue
 		}
+	} else {
+		min = 10
+		max = 38
 	}
 	ac := accessory.NewThermostat(accessory.Info{
 		Name: thing.Label,
