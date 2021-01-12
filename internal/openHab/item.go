@@ -43,6 +43,18 @@ func (i *EnrichedItemDTO) SwitchDimmer(on bool) {
 	}
 }
 
+func (i *EnrichedItemDTO) PreferGas(on bool) {
+	if on {
+		changeItemValue(i.Link, "GAS")
+	}
+}
+
+func (i *EnrichedItemDTO) PreferHeatPump(on bool) {
+	if on {
+		changeItemValue(i.Link, "HEATPUMP")
+	}
+}
+
 func (i *EnrichedItemDTO) ChangeDimmer(brightness int) {
 	changeItemValue(i.Link, strconv.Itoa(brightness))
 }
