@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -93,6 +94,7 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 				itemIDs[thing.UID] = id
 			}
 			accessories = c.registerThermostat(id, thing, accessories)
+
 			continue
 		}
 		if thing.ThingTypeUID == "idsmyrv:generator-thing" {
@@ -173,6 +175,10 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 				}
 				if watts, ok := bmvClient.GetPower(); ok {
 					_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
+				}
+				if temp, ok := bmvClient.GetBatteryTemperature(); ok {
+					_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+					_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
 				}
 			}
 			time.Sleep(10 * time.Second)
@@ -535,11 +541,8 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 						ac.Thermostat.TargetTemperature.SetValue(highTemp)
 					}
 				case 3:
-					if currentTemp > highTemp {
-						ac.Thermostat.TargetTemperature.SetValue(highTemp)
-					} else {
-						ac.Thermostat.TargetTemperature.SetValue(lowTemp)
-					}
+					ac.Thermostat.CoolingThresholdTemperature.SetValue(highTemp)
+					ac.Thermostat.HeatingThresholdTemperature.SetValue(lowTemp)
 				}
 			}
 
@@ -553,23 +556,40 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 	}()
 	ac.Thermostat.TemperatureDisplayUnits.SetValue(1)
 	ac.Thermostat.TargetHeatingCoolingState.OnValueRemoteUpdate(modeThing.SetHVACToMode)
+	ac.Thermostat.HeatingThresholdTemperature.OnValueRemoteUpdate(func(target float64) {
+		if units == 1 {
+			target = (target * 1.8) + 32
+			target = math.Round(target)
+		}
+		log.Printf("Got new target temprature to heat to of %v", target)
+		switch getHVACModeFromString(modeThing.State) {
+		case 1:
+			lowTempThing.SetTempValue(target)
+		case 3:
+			lowTempThing.SetTempValue(target)
+		}
+	})
+	ac.Thermostat.CoolingThresholdTemperature.OnValueRemoteUpdate(func(target float64) {
+		if units == 1 {
+			target = (target * 1.8) + 32
+			target = math.Round(target)
+		}
+		log.Printf("Got new target temprature to cool to of %v", target)
+		switch getHVACModeFromString(modeThing.State) {
+		case 1:
+			highTempThing.SetTempValue(target)
+		case 3:
+			highTempThing.SetTempValue(target)
+		}
+	})
 	ac.Thermostat.TargetTemperature.OnValueRemoteUpdate(func(target float64) {
-
-		highTemp, err := strconv.ParseFloat(highTempThing.State, 64)
-		if err != nil {
-			log.Printf("Invalid state for high temp. Got %s", currentTempThing.State)
-			return
-		}
-		lowTemp, err := strconv.ParseFloat(lowTempThing.State, 64)
-		if err != nil {
-			log.Printf("Invalid state for low temp. Got %s", currentTempThing.State)
-			return
-		}
 		offset := float64(3)
 		if units == 1 {
 			target = (target * 1.8) + 32
+			target = math.Round(target)
 			offset = 5
 		}
+		log.Printf("Got new target temprature for state %s to of %v", modeThing.State, target)
 		switch getHVACModeFromString(modeThing.State) {
 		case 1:
 			lowTempThing.SetTempValue(target)
@@ -577,22 +597,6 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		case 2:
 			lowTempThing.SetTempValue(target - offset)
 			highTempThing.SetTempValue(target)
-		case 3:
-			if target < lowTemp {
-				lowTempThing.SetTempValue(target)
-				highTempThing.SetTempValue(target + offset)
-			} else if target > highTemp {
-				lowTempThing.SetTempValue(target - offset)
-				highTempThing.SetTempValue(target)
-			} else {
-				if target-lowTemp < highTemp-target {
-					lowTempThing.SetTempValue(target)
-					highTempThing.SetTempValue(target + offset)
-				} else {
-					lowTempThing.SetTempValue(target - offset)
-					highTempThing.SetTempValue(target)
-				}
-			}
 		}
 	})
 	accessories = append(accessories, ac.Accessory)
