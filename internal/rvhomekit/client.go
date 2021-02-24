@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jgulick48/hc/accessory"
+	"github.com/jgulick48/mopeka_pro_check"
 
 	"github.com/jgulick48/rv-homekit/internal/automation"
 	"github.com/jgulick48/rv-homekit/internal/bmv"
@@ -20,13 +21,17 @@ import (
 )
 
 type client struct {
-	config    models.Config
-	habClient openHab.Client
-	bmvClient *bmv.Client
+	config      models.Config
+	habClient   openHab.Client
+	bmvClient   *bmv.Client
+	tankSensors *mopeka_pro_check.Scanner
+	syncFuncs   []func()
 }
 
 type Client interface {
 	GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []*accessory.Accessory
+	SaveClientConfig(filename string)
+	RunSyncFunctions()
 }
 
 func LoadClientConfig(filename string) models.Config {
@@ -47,11 +52,35 @@ func LoadClientConfig(filename string) models.Config {
 	return config
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client) Client {
+func (c *client) SaveClientConfig(filename string) {
+	if filename == "" {
+		filename = "./config.json"
+	}
+	data, err := json.MarshalIndent(c.config, "", "  ")
+	if err != nil {
+		return
+	}
+	ioutil.WriteFile(filename, data, 0644)
+}
+
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors *mopeka_pro_check.Scanner) Client {
 	return &client{
-		config:    config,
-		habClient: habClient,
-		bmvClient: bmvClient,
+		config:      config,
+		habClient:   habClient,
+		bmvClient:   bmvClient,
+		tankSensors: tankSensors,
+		syncFuncs:   make([]func(), 0),
+	}
+}
+
+func (c *client) RunSyncFunctions() {
+	start := time.Now()
+	for _, syncFunc := range c.syncFuncs {
+		syncFunc()
+	}
+	end := time.Now()
+	if metrics.StatsEnabled {
+		_ = metrics.Metrics.Gauge("syncFunc.duration", float64(end.Sub(start).Milliseconds()), []string{fmt.Sprintf("name:%s", c.config.BridgeName)}, 1)
 	}
 }
 
@@ -81,6 +110,9 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 	accessories, ok = c.registerBatteryLevel(id, "House Battery", accessories)
 	if ok {
 		itemIDs["House Battery"] = id
+	}
+	if c.tankSensors != nil {
+		itemIDs, accessories, maxID = c.registerTankSensors(itemIDs, accessories)
 	}
 	for _, thing := range things {
 		if !thing.Editable {
@@ -128,7 +160,7 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 			}
 		}
 	}
-	itemConfigFile, err = json.Marshal(itemIDs)
+	itemConfigFile, err = json.MarshalIndent(itemIDs, "", "  ")
 	if err != nil {
 		log.Printf("Error trying to create config file: %s", err)
 	} else {
@@ -152,42 +184,152 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 	} else {
 		return accessories, false
 	}
-	go func() {
-		var lastState float64
-		for {
-			soc, ok := bmvClient.GetBatteryStateOfCharge()
-			if ok && soc != lastState {
-				ac.HumiditySensor.CurrentRelativeHumidity.SetValue(soc)
-				lastState = soc
-			}
-			if metrics.StatsEnabled {
-				if ok {
-					_ = metrics.Metrics.Gauge("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-				if current, ok := bmvClient.GetBatteryCurrent(); ok {
-					_ = metrics.Metrics.Gauge("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-				if voltage, ok := bmvClient.GetBatteryVoltage(); ok {
-					_ = metrics.Metrics.Gauge("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-				if amps, ok := bmvClient.GetConsumedAmpHours(); ok {
-					_ = metrics.Metrics.Gauge("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-				if watts, ok := bmvClient.GetPower(); ok {
-					_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-				if temp, ok := bmvClient.GetBatteryTemperature(); ok {
-					_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
-					_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
-				}
-			}
-			time.Sleep(10 * time.Second)
+	var lastState float64
+	syncFunc := func() {
+		soc, ok := bmvClient.GetBatteryStateOfCharge()
+		if ok && soc != lastState {
+			ac.HumiditySensor.CurrentRelativeHumidity.SetValue(soc)
+			lastState = soc
 		}
-	}()
+		if metrics.StatsEnabled {
+			if ok {
+				_ = metrics.Metrics.Gauge("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if current, ok := bmvClient.GetBatteryCurrent(); ok {
+				_ = metrics.Metrics.Gauge("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if voltage, ok := bmvClient.GetBatteryVoltage(); ok {
+				_ = metrics.Metrics.Gauge("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if amps, ok := bmvClient.GetConsumedAmpHours(); ok {
+				_ = metrics.Metrics.Gauge("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if watts, ok := bmvClient.GetPower(); ok {
+				_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if temp, ok := bmvClient.GetBatteryTemperature(); ok {
+				_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+		}
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	ac.HumiditySensor.CurrentRelativeHumidity.SetMinValue(0)
 	ac.HumiditySensor.CurrentRelativeHumidity.SetMaxValue(100)
 	accessories = append(accessories, ac.Accessory)
 	return accessories, true
+}
+
+func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*accessory.Accessory) (map[string]uint64, []*accessory.Accessory, uint64) {
+	maxID := uint64(0)
+	for _, id := range itemIds {
+		if id > maxID {
+			maxID = id + 1
+		}
+	}
+	devices := c.tankSensors.GetDevices()
+	log.Printf("Found %v tank sensors.", len(devices))
+	for _, device := range devices {
+		deviceConfig, ok := c.matchLevelSensorWithConfig(device.GetAddress())
+		if !ok {
+			deviceConfig = models.MopekaLevelSensor{
+				Address:   device.GetAddress(),
+				Name:      "",
+				Type:      "",
+				MaxHeight: 0,
+			}
+			c.config.TankSensors.Devices = append(c.config.TankSensors.Devices, deviceConfig)
+		}
+		var id uint64
+		if id, ok = itemIds[device.GetAddress()]; !ok {
+			id = maxID
+			maxID += 2
+		}
+		accessories = c.registerTankSensor(id, accessories, device, deviceConfig)
+		itemIds[device.GetAddress()] = id
+		deviceConfig.Discovered = true
+	}
+	for _, deviceConfig := range c.config.TankSensors.Devices {
+		undiscovered := 0
+		if !deviceConfig.Discovered {
+			var id uint64
+			var ok bool
+			if id, ok = itemIds[deviceConfig.Address]; !ok {
+				id = maxID
+				maxID += 2
+			}
+			accessories = c.registerTankSensor(id, accessories, mopeka_pro_check.MopekaProCheck{}, deviceConfig)
+			itemIds[deviceConfig.Address] = id
+			undiscovered++
+		}
+		log.Printf("Registered %v undiscovered devices.", undiscovered)
+	}
+	return itemIds, accessories, maxID
+}
+
+func (c *client) matchLevelSensorWithConfig(address string) (models.MopekaLevelSensor, bool) {
+	for i, device := range c.config.TankSensors.Devices {
+		if strings.ToLower(device.Address) == strings.ToLower(address) {
+			c.config.TankSensors.Devices[i].Discovered = true
+			return device, true
+		}
+	}
+	return models.MopekaLevelSensor{
+		Address: address,
+	}, false
+}
+
+func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessory, device mopeka_pro_check.MopekaProCheck, deviceConfig models.MopekaLevelSensor) []*accessory.Accessory {
+	name := deviceConfig.Name
+	if name == "" {
+		name = device.GetAddress()
+	}
+	ac1 := accessory.NewHumiditySensor(accessory.Info{
+		Name:         fmt.Sprintf("%s Level", name),
+		SerialNumber: "",
+		ID:           id,
+	})
+	ac1.HumiditySensor.CurrentRelativeHumidity.SetValue(0)
+	ac2 := accessory.NewTemperatureSensor(accessory.Info{
+		Name:         name,
+		SerialNumber: deviceConfig.Address,
+		ID:           id + 1,
+	}, 0, -40, 100, 1)
+	temp := float64(0)
+	level := float64(0)
+	syncFunc := func() {
+		if device, ok := c.tankSensors.GetDevice(strings.ToLower(deviceConfig.Address)); ok {
+			lastTemp := temp
+			lastLevel := level
+			if temp = device.GetTempCelsius(); lastTemp != temp {
+				ac2.TempSensor.CurrentTemperature.SetValue(temp)
+			}
+			if level = device.GetLevelPercent(deviceConfig.Type); lastLevel != level {
+				ac1.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
+				log.Printf("got new tank level of %v for %s", level, name)
+			}
+			if metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name), fmt.Sprintf("type:%s", device.GetSensorType())}, 1)
+				_ = metrics.Metrics.Gauge("tank.levelMM", device.GetTankLevelMM(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.tempCelsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.tempFahrenheit", device.GetTempFahrenheit(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.batteryPercent", float64(device.GetBatteryLevel()), []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.batteryVoltage", device.GetBatteryVoltage(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.sensorQuality", device.GetReadQuality(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				_ = metrics.Metrics.Gauge("tank.sensorRSSI", float64(device.GetRSSI()), []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+		} else {
+			log.Printf("Device with name of %s and address of %s was not found.", deviceConfig.Name, deviceConfig.Address)
+		}
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
+	ac1.HumiditySensor.CurrentRelativeHumidity.SetMinValue(0)
+	ac1.HumiditySensor.CurrentRelativeHumidity.SetMaxValue(100)
+	accessories = append(accessories, ac1.Accessory)
+	accessories = append(accessories, ac2.Accessory)
+	return accessories
 }
 
 func (c *client) registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name string, accessories []*accessory.Accessory) []*accessory.Accessory {
@@ -195,25 +337,23 @@ func (c *client) registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name
 		Name: name,
 		ID:   id,
 	})
-	go func() {
-		for {
-			lastState := ""
-			item.GetCurrentValue()
-			level, err := strconv.ParseFloat(item.State, 64)
-			if err == nil && metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
-			}
-			if item.State != lastState {
-				if err == nil {
-					ac.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
-				}
-				lastState = item.State
-			}
-			time.Sleep(10 * time.Second)
-			lastState = item.State
-
+	lastState := ""
+	syncFunc := func() {
+		item.GetCurrentValue()
+		level, err := strconv.ParseFloat(item.State, 64)
+		if err == nil && metrics.StatsEnabled {
+			_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
 		}
-	}()
+		if item.State != lastState {
+			if err == nil {
+				ac.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
+			}
+			lastState = item.State
+		}
+		lastState = item.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	ac.HumiditySensor.CurrentRelativeHumidity.SetMinValue(0)
 	ac.HumiditySensor.CurrentRelativeHumidity.SetMaxValue(100)
 	accessories = append(accessories, ac.Accessory)
@@ -226,16 +366,16 @@ func (c *client) registerLightBulb(id uint64, item openHab.EnrichedItemDTO, name
 		ID:   id,
 	})
 	lightbulb.Lightbulb.On.OnValueRemoteUpdate(item.GetChangeFunction())
-	go func() {
-		lastValue := ""
-		for {
-			if item.State != lastValue {
-				lightbulb.Lightbulb.On.SetValue(item.State == "ON")
-			}
-			time.Sleep(10 * time.Second)
-			item.GetCurrentValue()
+	lastValue := ""
+	syncFunc := func() {
+		item.GetCurrentValue()
+		if item.State != lastValue {
+			lightbulb.Lightbulb.On.SetValue(item.State == "ON")
 		}
-	}()
+		lastValue = item.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	lightbulb.Lightbulb.On.SetValue(item.State == "ON")
 	accessories = append(accessories, lightbulb.Accessory)
 	return accessories
@@ -265,45 +405,45 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		ac.AddBatteryLevel()
 	}
-	go func() {
+	var lastState float64
+	var lastCurrent float64
+	syncFunc := func() {
 		if c.bmvClient != nil {
 			bmvClient := *c.bmvClient
-			var lastState float64
-			var lastCurrent float64
-			for {
-				if soc, ok := bmvClient.GetBatteryStateOfCharge(); ok && soc != lastState {
-					ac.Battery.BatteryLevel.SetValue(int(soc))
-					if soc < 10 {
-						ac.Battery.StatusLowBattery.SetValue(1)
-					} else {
-						ac.Battery.StatusLowBattery.SetValue(0)
-					}
-					lastState = soc
+			if soc, ok := bmvClient.GetBatteryStateOfCharge(); ok && soc != lastState {
+				ac.Battery.BatteryLevel.SetValue(int(soc))
+				if soc < 10 {
+					ac.Battery.StatusLowBattery.SetValue(1)
+				} else {
+					ac.Battery.StatusLowBattery.SetValue(0)
 				}
-				if current, ok := bmvClient.GetBatteryCurrent(); ok && current != lastCurrent {
-					chargeState := 0
-					if current > 0 {
-						chargeState = 1
-					}
-					ac.Battery.ChargingState.SetValue(chargeState)
+				lastState = soc
+			}
+			if current, ok := bmvClient.GetBatteryCurrent(); ok && current != lastCurrent {
+				chargeState := 0
+				if current > 0 {
+					chargeState = 1
 				}
-				time.Sleep(10 * time.Second)
+				ac.Battery.ChargingState.SetValue(chargeState)
+				lastCurrent = current
 			}
 		}
-	}()
-	go func() {
-		lastValue := ""
-		for {
-			if stateThing.State != lastValue {
-				ac.Switch.On.SetValue(stateThing.GetCurrentState())
-			}
-			if metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
-			}
-			time.Sleep(10 * time.Second)
-			stateThing.GetCurrentValue()
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
+	lastValue := ""
+	syncFunc2 := func() {
+		stateThing.GetCurrentValue()
+		if stateThing.State != lastValue {
+			ac.Switch.On.SetValue(stateThing.GetCurrentState())
 		}
-	}()
+		if metrics.StatsEnabled {
+			_ = metrics.Metrics.Gauge("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
+		}
+		lastValue = stateThing.State
+	}
+	syncFunc2()
+	c.syncFuncs = append(c.syncFuncs, syncFunc2)
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
@@ -320,16 +460,16 @@ func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name st
 		ID:   id,
 	})
 	ac.Switch.On.OnValueRemoteUpdate(item.GetChangeFunction())
-	go func() {
-		lastValue := ""
-		for {
-			if item.State != lastValue {
-				ac.Switch.On.SetValue(item.State == "ON")
-			}
-			time.Sleep(10 * time.Second)
-			item.GetCurrentValue()
+	lastValue := ""
+	syncFunc := func() {
+		item.GetCurrentValue()
+		if item.State != lastValue {
+			ac.Switch.On.SetValue(item.State == "ON")
 		}
-	}()
+		lastValue = item.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	accessories = append(accessories, ac.Accessory)
 	return accessories
 }
@@ -341,20 +481,20 @@ func (c *client) registerDimmer(id uint64, item openHab.EnrichedItemDTO, name st
 	})
 	lightbulb.LightDimer.On.OnValueRemoteUpdate(item.GetChangeFunction())
 	lightbulb.LightDimer.Brightness.OnValueRemoteUpdate(item.ChangeDimmer)
-	go func() {
-		lastValue := ""
-		for {
-			if item.State != lastValue {
-				lightbulb.LightDimer.On.SetValue(item.State != "0")
-				brightness, err := strconv.ParseInt(item.State, 10, 64)
-				if err == nil {
-					lightbulb.LightDimer.Brightness.SetValue(int(brightness))
-				}
+	lastValue := ""
+	syncFunc := func() {
+		item.GetCurrentValue()
+		if item.State != lastValue {
+			lightbulb.LightDimer.On.SetValue(item.State != "0")
+			brightness, err := strconv.ParseInt(item.State, 10, 64)
+			if err == nil {
+				lightbulb.LightDimer.Brightness.SetValue(int(brightness))
 			}
-			time.Sleep(10 * time.Second)
-			item.GetCurrentValue()
 		}
-	}()
+		lastValue = item.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	accessories = append(accessories, lightbulb.Accessory)
 	return accessories
 }
@@ -374,29 +514,29 @@ func (c *client) registerColoredLight(id uint64, item openHab.EnrichedItemDTO, n
 	ac.Lightbulb.Brightness.MaxValue = 100
 	ac.Lightbulb.Brightness.OnValueRemoteUpdate(item.ChangeBrightnessValue)
 	ac.Lightbulb.On.OnValueRemoteUpdate(item.ChangeSwitch)
-	go func() {
-		lastValue := ""
-		for {
-			if item.State != lastValue {
-				hsv := strings.Split(item.State, ",")
-				if len(hsv) != 3 {
-					break
-				}
-				ac.Lightbulb.On.SetValue(hsv[2] != "0")
-				if hue, err := strconv.ParseFloat(hsv[0], 64); err != nil {
-					ac.Lightbulb.Hue.SetValue(hue)
-				}
-				if saturation, err := strconv.ParseFloat(hsv[1], 64); err != nil {
-					ac.Lightbulb.Saturation.SetValue(saturation)
-				}
-				if brightness, err := strconv.ParseInt(hsv[0], 10, 64); err != nil {
-					ac.Lightbulb.Brightness.SetValue(int(brightness))
-				}
+	lastValue := ""
+	syncFunc := func() {
+		item.GetCurrentValue()
+		if item.State != lastValue {
+			hsv := strings.Split(item.State, ",")
+			if len(hsv) != 3 {
+				return
 			}
-			time.Sleep(10 * time.Second)
-			item.GetCurrentValue()
+			ac.Lightbulb.On.SetValue(hsv[2] != "0")
+			if hue, err := strconv.ParseFloat(hsv[0], 64); err != nil {
+				ac.Lightbulb.Hue.SetValue(hue)
+			}
+			if saturation, err := strconv.ParseFloat(hsv[1], 64); err != nil {
+				ac.Lightbulb.Saturation.SetValue(saturation)
+			}
+			if brightness, err := strconv.ParseInt(hsv[0], 10, 64); err != nil {
+				ac.Lightbulb.Brightness.SetValue(int(brightness))
+			}
 		}
-	}()
+		lastValue = item.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	accessories = append(accessories, ac.Accessory)
 	return accessories
 }
@@ -467,93 +607,91 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		ID:   id,
 	}, currentTemp, min, max, steps)
 	metricName := strings.Split(thing.Label, " ")
-	go func() {
-		currentTempState := ""
-		currentHVACState := ""
-		currentHVACMode := ""
-		currentHighTempState := ""
-		currentLowTempState := ""
-		var currentTemp float64
-		for {
-			currentTempThing.GetCurrentValue()
-			statusThing.GetCurrentValue()
-			modeThing.GetCurrentValue()
-			lowTempThing.GetCurrentValue()
-			highTempThing.GetCurrentValue()
-			switch currentTempThing.Pattern {
-			case "%d °F":
-				units = 1
-				break
-			}
-			currentTemp, err = strconv.ParseFloat(currentTempThing.State, 64)
-			if err != nil {
-				log.Printf("Invalid state for current temprature. Got %s", currentTempThing.State)
-			} else {
-				if metrics.StatsEnabled {
-					_ = metrics.Metrics.Gauge("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
-				}
-				if units == 1 {
-					currentTemp = (currentTemp - 32) / 1.8
-				}
-
-				if currentTempState != currentTempThing.State {
-					log.Printf("New temp for %s %v", thing.Label, currentTemp)
-					ac.Thermostat.CurrentTemperature.SetValue(currentTemp)
-				}
-
-			}
-			currentStatus := c.getHVACStatusFromString(statusThing.State)
-			if metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
-			}
-			if currentHVACState != statusThing.State {
-				ac.Thermostat.CurrentHeatingCoolingState.SetValue(currentStatus)
-			}
-			currentMode := getHVACModeFromString(modeThing.State)
-			if metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
-			}
-			if currentHVACMode != modeThing.State {
-				ac.Thermostat.TargetHeatingCoolingState.SetValue(currentMode)
-			}
-			if currentHighTempState != highTempThing.State || currentLowTempState != lowTempThing.State {
-				highTemp, err := strconv.ParseFloat(highTempThing.State, 64)
-				if err != nil {
-					log.Printf("Invalid state for high temp. Got %s", currentTempThing.State)
-					break
-				}
-				lowTemp, err := strconv.ParseFloat(lowTempThing.State, 64)
-				if err != nil {
-					log.Printf("Invalid state for low temp. Got %s", currentTempThing.State)
-					break
-				}
-				if units == 1 {
-					highTemp = (highTemp - 32) / 1.8
-					lowTemp = (lowTemp - 32) / 1.8
-				}
-				switch getHVACModeFromString(modeThing.State) {
-				case 1:
-					if currentLowTempState != lowTempThing.State {
-						ac.Thermostat.TargetTemperature.SetValue(lowTemp)
-					}
-				case 2:
-					if currentHighTempState != highTempThing.State {
-						ac.Thermostat.TargetTemperature.SetValue(highTemp)
-					}
-				case 3:
-					ac.Thermostat.CoolingThresholdTemperature.SetValue(highTemp)
-					ac.Thermostat.HeatingThresholdTemperature.SetValue(lowTemp)
-				}
-			}
-
-			currentTempState = currentTempThing.State
-			currentHVACState = statusThing.State
-			currentHVACMode = modeThing.State
-			currentLowTempState = lowTempThing.State
-			currentHighTempState = highTempThing.State
-			time.Sleep(10 * time.Second)
+	currentTempState := ""
+	currentHVACState := ""
+	currentHVACMode := ""
+	currentHighTempState := ""
+	currentLowTempState := ""
+	syncFunc := func() {
+		currentTempThing.GetCurrentValue()
+		statusThing.GetCurrentValue()
+		modeThing.GetCurrentValue()
+		lowTempThing.GetCurrentValue()
+		highTempThing.GetCurrentValue()
+		switch currentTempThing.Pattern {
+		case "%d °F":
+			units = 1
+			break
 		}
-	}()
+		currentTemp, err = strconv.ParseFloat(currentTempThing.State, 64)
+		if err != nil {
+			log.Printf("Invalid state for current temprature. Got %s", currentTempThing.State)
+		} else {
+			if metrics.StatsEnabled {
+				_ = metrics.Metrics.Gauge("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+			}
+			if units == 1 {
+				currentTemp = (currentTemp - 32) / 1.8
+			}
+
+			if currentTempState != currentTempThing.State {
+				log.Printf("New temp for %s %v", thing.Label, currentTemp)
+				ac.Thermostat.CurrentTemperature.SetValue(currentTemp)
+			}
+
+		}
+		currentStatus := c.getHVACStatusFromString(statusThing.State)
+		if metrics.StatsEnabled {
+			_ = metrics.Metrics.Gauge("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+		}
+		if currentHVACState != statusThing.State {
+			ac.Thermostat.CurrentHeatingCoolingState.SetValue(currentStatus)
+		}
+		currentMode := getHVACModeFromString(modeThing.State)
+		if metrics.StatsEnabled {
+			_ = metrics.Metrics.Gauge("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+		}
+		if currentHVACMode != modeThing.State {
+			ac.Thermostat.TargetHeatingCoolingState.SetValue(currentMode)
+		}
+		if currentHighTempState != highTempThing.State || currentLowTempState != lowTempThing.State {
+			highTemp, err := strconv.ParseFloat(highTempThing.State, 64)
+			if err != nil {
+				log.Printf("Invalid state for high temp. Got %s", currentTempThing.State)
+				return
+			}
+			lowTemp, err := strconv.ParseFloat(lowTempThing.State, 64)
+			if err != nil {
+				log.Printf("Invalid state for low temp. Got %s", currentTempThing.State)
+				return
+			}
+			if units == 1 {
+				highTemp = (highTemp - 32) / 1.8
+				lowTemp = (lowTemp - 32) / 1.8
+			}
+			switch getHVACModeFromString(modeThing.State) {
+			case 1:
+				if currentLowTempState != lowTempThing.State {
+					ac.Thermostat.TargetTemperature.SetValue(lowTemp)
+				}
+			case 2:
+				if currentHighTempState != highTempThing.State {
+					ac.Thermostat.TargetTemperature.SetValue(highTemp)
+				}
+			case 3:
+				ac.Thermostat.CoolingThresholdTemperature.SetValue(highTemp)
+				ac.Thermostat.HeatingThresholdTemperature.SetValue(lowTemp)
+			}
+		}
+
+		currentTempState = currentTempThing.State
+		currentHVACState = statusThing.State
+		currentHVACMode = modeThing.State
+		currentLowTempState = lowTempThing.State
+		currentHighTempState = highTempThing.State
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	ac.Thermostat.TemperatureDisplayUnits.SetValue(1)
 	ac.Thermostat.TargetHeatingCoolingState.OnValueRemoteUpdate(modeThing.SetHVACToMode)
 	ac.Thermostat.HeatingThresholdTemperature.OnValueRemoteUpdate(func(target float64) {

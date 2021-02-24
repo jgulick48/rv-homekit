@@ -7,10 +7,13 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
+	"github.com/jgulick48/mopeka_pro_check"
+	"github.com/mitchellh/panicwrap"
 
 	"github.com/jgulick48/rv-homekit/internal/bmv"
 	"github.com/jgulick48/rv-homekit/internal/metrics"
@@ -19,6 +22,29 @@ import (
 )
 
 func main() {
+	startService()
+	exitStatus, err := panicwrap.BasicWrap(panicHandler)
+	if err != nil {
+		// Something went wrong setting up the panic wrapper. Unlikely,
+		// but possible.
+		panic(err)
+	}
+
+	// If exitStatus >= 0, then we're the parent process and the panicwrap
+	// re-executed ourselves and completed. Just exit with the proper status.
+	if exitStatus >= 0 {
+		os.Exit(exitStatus)
+	}
+}
+
+func panicHandler(output string) {
+	// output contains the full output (including stack traces) of the
+	// panic. Put it in a file or something.
+	log.Printf("The child panicked:\n\n%s\n", output)
+	os.Exit(1)
+}
+
+func startService() {
 	path, err := os.Getwd()
 	if err != nil {
 		log.Println(err)
@@ -46,8 +72,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	rvHomeKit := rvhomekit.NewClient(config, habClient, bmvClient)
-	accessories := rvHomeKit.GetAccessoriesFromOpenHab(things)
+	var tankSensors mopeka_pro_check.Scanner
+	if config.TankSensors.Enabled {
+		tankSensors = mopeka_pro_check.NewScanner(60 * time.Second)
+		tankSensors.StartScan()
+		time.Sleep(10 * time.Second)
+	}
+	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, &tankSensors)
+	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
+	rvHomeKitClient.SaveClientConfig(*configLocation)
 	bridge := accessory.NewBridge(accessory.Info{
 		Name: config.BridgeName,
 		ID:   1,
@@ -66,6 +99,22 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
+	syncTimer := time.Second * 10
+	if duration, err := time.ParseDuration(config.SyncTimer); err == nil {
+		syncTimer = duration
+	}
+	ticker := time.NewTicker(syncTimer)
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				rvHomeKitClient.RunSyncFunctions()
+			}
+		}
+	}()
 	go func() {
 		origin, _ := url.Parse(config.OpenHabServer)
 
@@ -87,6 +136,8 @@ func main() {
 
 	hc.OnTermination(func() {
 		<-t.Stop()
+		ticker.Stop()
+		done <- true
 	})
 	t.Start()
 }

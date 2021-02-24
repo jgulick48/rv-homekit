@@ -15,6 +15,8 @@ type Config struct {
 	Automation      map[string]Automation `json:"automation"`
 	StatsServer     string                `json:"statsServer"`
 	ThermostatRange TemperatureRange      `json:"thermostatRange"`
+	TankSensors     MopkeaProCheck        `json:"tankSensors"`
+	SyncTimer       string                `json:"syncTimer"`
 }
 
 type BMVConfig struct {
@@ -37,6 +39,18 @@ type TemperatureRange struct {
 	MinValue float64 `json:"minValue"`
 	MaxValue float64 `json:"maxValue"`
 	Unit     string  `json:"unit"`
+}
+
+type MopkeaProCheck struct {
+	Enabled bool                `json:"enabled"`
+	Devices []MopekaLevelSensor `json:"devices"`
+}
+type MopekaLevelSensor struct {
+	Address    string  `json:"address"`
+	Name       string  `json:"name"`
+	Type       string  `json:"type"`
+	MaxHeight  float64 `json:"maxHeight"`
+	Discovered bool    `json:"-"`
 }
 
 type Duration struct {
