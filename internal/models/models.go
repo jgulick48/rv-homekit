@@ -7,16 +7,17 @@ import (
 )
 
 type Config struct {
-	BridgeName      string                `json:"bridgeName"`
-	OpenHabServer   string                `json:"openHabServer"`
-	PIN             string                `json:"pin"`
-	Port            string                `json:"port"`
-	BMVConfig       BMVConfig             `json:"bmvConfig"`
-	Automation      map[string]Automation `json:"automation"`
-	StatsServer     string                `json:"statsServer"`
-	ThermostatRange TemperatureRange      `json:"thermostatRange"`
-	TankSensors     MopkeaProCheck        `json:"tankSensors"`
-	SyncTimer       string                `json:"syncTimer"`
+	BridgeName            string                `json:"bridgeName"`
+	OpenHabServer         string                `json:"openHabServer"`
+	CrashOnDeviceMismatch bool                  `json:"crashOnDeviceMismatch"`
+	PIN                   string                `json:"pin"`
+	Port                  string                `json:"port"`
+	BMVConfig             BMVConfig             `json:"bmvConfig"`
+	Automation            map[string]Automation `json:"automation"`
+	StatsServer           string                `json:"statsServer"`
+	ThermostatRange       TemperatureRange      `json:"thermostatRange"`
+	TankSensors           MopkeaProCheck        `json:"tankSensors"`
+	SyncTimer             string                `json:"syncTimer"`
 }
 
 type BMVConfig struct {

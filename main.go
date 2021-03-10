@@ -74,9 +74,9 @@ func startService() {
 	}
 	var tankSensors mopeka_pro_check.Scanner
 	if config.TankSensors.Enabled {
-		tankSensors = mopeka_pro_check.NewScanner(60 * time.Second)
+		tankSensors = mopeka_pro_check.NewScanner(20 * time.Second)
 		tankSensors.StartScan()
-		time.Sleep(10 * time.Second)
+		time.Sleep(20 * time.Second)
 	}
 	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, &tankSensors)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
@@ -87,7 +87,6 @@ func startService() {
 	})
 
 	log.Printf("Found %v items", len(accessories))
-
 	// configure the ip transport
 	hcConfig := hc.Config{
 		Pin: config.PIN,

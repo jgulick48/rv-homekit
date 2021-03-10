@@ -165,6 +165,7 @@ func (i *EnrichedItemDTO) GetCurrentValue() {
 		log.Printf("Error making request for things from OpenHAB: %s", err)
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Invalid response from OpenHAB. Got %v expecting 202", resp.StatusCode)
 		return

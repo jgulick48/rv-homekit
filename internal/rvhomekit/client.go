@@ -111,8 +111,9 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 	if ok {
 		itemIDs["House Battery"] = id
 	}
+	var foundTankSensors int
 	if c.tankSensors != nil {
-		itemIDs, accessories, maxID = c.registerTankSensors(itemIDs, accessories)
+		itemIDs, accessories, maxID, foundTankSensors = c.registerTankSensors(itemIDs, accessories)
 	}
 	for _, thing := range things {
 		if !thing.Editable {
@@ -169,7 +170,9 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 			log.Printf("Error trying to save config file: %s", err)
 		}
 	}
-
+	if c.config.CrashOnDeviceMismatch && len(accessories) != (len(itemIDs)+foundTankSensors) {
+		log.Fatalf("Found %v items expected to find %v exiting due to config.", len(accessories), len(itemIDs))
+	}
 	return accessories
 }
 
@@ -221,7 +224,8 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 	return accessories, true
 }
 
-func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*accessory.Accessory) (map[string]uint64, []*accessory.Accessory, uint64) {
+func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*accessory.Accessory) (map[string]uint64, []*accessory.Accessory, uint64, int) {
+	foundSensors := 0
 	maxID := uint64(0)
 	for _, id := range itemIds {
 		if id > maxID {
@@ -230,12 +234,12 @@ func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*a
 	}
 	devices := c.tankSensors.GetDevices()
 	log.Printf("Found %v tank sensors.", len(devices))
-	for _, device := range devices {
+	for i, device := range devices {
 		deviceConfig, ok := c.matchLevelSensorWithConfig(device.GetAddress())
 		if !ok {
 			deviceConfig = models.MopekaLevelSensor{
 				Address:   device.GetAddress(),
-				Name:      "",
+				Name:      fmt.Sprintf("Tank %v", i),
 				Type:      "",
 				MaxHeight: 0,
 			}
@@ -246,12 +250,13 @@ func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*a
 			id = maxID
 			maxID += 2
 		}
-		accessories = c.registerTankSensor(id, accessories, device, deviceConfig)
+		accessories = c.registerTankSensor(id, accessories, deviceConfig)
 		itemIds[device.GetAddress()] = id
 		deviceConfig.Discovered = true
+		foundSensors++
 	}
+	undiscovered := 0
 	for _, deviceConfig := range c.config.TankSensors.Devices {
-		undiscovered := 0
 		if !deviceConfig.Discovered {
 			var id uint64
 			var ok bool
@@ -259,13 +264,14 @@ func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*a
 				id = maxID
 				maxID += 2
 			}
-			accessories = c.registerTankSensor(id, accessories, mopeka_pro_check.MopekaProCheck{}, deviceConfig)
+			accessories = c.registerTankSensor(id, accessories, deviceConfig)
 			itemIds[deviceConfig.Address] = id
 			undiscovered++
+			foundSensors++
 		}
-		log.Printf("Registered %v undiscovered devices.", undiscovered)
 	}
-	return itemIds, accessories, maxID
+	log.Printf("Registered %v undiscovered devices.", undiscovered)
+	return itemIds, accessories, maxID, foundSensors
 }
 
 func (c *client) matchLevelSensorWithConfig(address string) (models.MopekaLevelSensor, bool) {
@@ -280,24 +286,22 @@ func (c *client) matchLevelSensorWithConfig(address string) (models.MopekaLevelS
 	}, false
 }
 
-func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessory, device mopeka_pro_check.MopekaProCheck, deviceConfig models.MopekaLevelSensor) []*accessory.Accessory {
+func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessory, deviceConfig models.MopekaLevelSensor) []*accessory.Accessory {
 	name := deviceConfig.Name
-	if name == "" {
-		name = device.GetAddress()
-	}
 	ac1 := accessory.NewHumiditySensor(accessory.Info{
 		Name:         fmt.Sprintf("%s Level", name),
 		SerialNumber: "",
 		ID:           id,
 	})
-	ac1.HumiditySensor.CurrentRelativeHumidity.SetValue(0)
 	ac2 := accessory.NewTemperatureSensor(accessory.Info{
 		Name:         name,
 		SerialNumber: deviceConfig.Address,
 		ID:           id + 1,
 	}, 0, -40, 100, 1)
-	temp := float64(0)
-	level := float64(0)
+	temp := float64(10)
+	level := float64(100)
+	ac2.TempSensor.CurrentTemperature.SetValue(temp)
+	ac1.HumiditySensor.CurrentRelativeHumidity.SetValue(level)
 	syncFunc := func() {
 		if device, ok := c.tankSensors.GetDevice(strings.ToLower(deviceConfig.Address)); ok {
 			lastTemp := temp
