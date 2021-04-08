@@ -27,6 +27,8 @@ type Client interface {
 	GetConsumedAmpHours() (float64, bool)
 	GetBatteryTemperature() (float64, bool)
 	GetPower() (float64, bool)
+	GetTimeToGo() (float64, bool)
+	GetChargeTimeRemaining() (float64, bool)
 }
 
 type client struct {
@@ -186,6 +188,25 @@ func (c *client) GetBatteryTemperature() (float64, bool) {
 	return 0, false
 }
 
+func (c *client) GetChargeTimeRemaining() (float64, bool) {
+	ampHours, ok := c.GetConsumedAmpHours()
+	if !ok {
+		return 0, false
+	}
+	current, ok := c.GetBatteryCurrent()
+	if !ok {
+		return 0, false
+	}
+	if current < 0 {
+		return -1, true
+	}
+	return (-ampHours / current) * 3600, true
+}
+
 func (c *client) GetDeviceName() string {
 	return c.config.Name
+}
+
+func (c *client) GetTimeToGo() (float64, bool) {
+	return 0, false
 }

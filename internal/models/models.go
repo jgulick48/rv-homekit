@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/guregu/null"
 )
 
 type Config struct {
 	BridgeName            string                `json:"bridgeName"`
 	OpenHabServer         string                `json:"openHabServer"`
 	CrashOnDeviceMismatch bool                  `json:"crashOnDeviceMismatch"`
+	Debug                 bool                  `json:"debug"`
+	MQTTConfiguration     MQTTConfiguration     `json:"mqttConfiguration"`
 	PIN                   string                `json:"pin"`
 	Port                  string                `json:"port"`
 	BMVConfig             BMVConfig             `json:"bmvConfig"`
@@ -18,6 +22,12 @@ type Config struct {
 	ThermostatRange       TemperatureRange      `json:"thermostatRange"`
 	TankSensors           MopkeaProCheck        `json:"tankSensors"`
 	SyncTimer             string                `json:"syncTimer"`
+}
+
+type MQTTConfiguration struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	DeviceID string `json:"deviceId"`
 }
 
 type BMVConfig struct {
@@ -81,4 +91,13 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	default:
 		return errors.New("invalid duration")
 	}
+}
+
+type Message struct {
+	Value null.Float `json:"value"`
+}
+
+type Metric struct {
+	Tags  []string
+	Value float64
 }

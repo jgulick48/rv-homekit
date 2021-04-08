@@ -1,21 +1,53 @@
 {
   "bridgeName": "Big Blue",
-  "openHabServer": "http://192.168.1.4:8080",
-  "pin": "00102003",
+  "openHabServer": "http://192.168.3.10:8081",
+  "crashOnDeviceMismatch": true,
+  "debug": true,
+  "mqttConfiguration": {
+    "host": "192.168.3.86",
+    "port": 1883,
+    "deviceId": "d41243b4f71d"
+  },
+  "pin": "00203004",
   "port": "12321",
   "bmvConfig": {
-    "device": "/dev/ttyUSB0",
-    "baud": 19200
+    "device": "",
+    "baud": 0,
+    "name": ""
   },
   "automation": {
     "generator": {
+      "highValue": 98,
       "lowValue": 10,
-      "highValue": 99.9,
-      "offDelay": "5m",
-      "coolDown": "30m"
+      "offDelay": "5m0s",
+      "coolDown": "30m0s",
+      "minOn": "1h0m0s",
+      "maxOn": "3h0m0s",
+      "minChargeCurrent": 1
     }
   },
+  "statsServer": "127.0.0.1:8125",
+  "thermostatRange": {
+    "minValue": 0,
+    "maxValue": 0,
+    "unit": ""
+  },
   "tankSensors": {
-    "enabled": true
-  }
+    "enabled": false,
+    "devices": [
+      {
+        "address": "fb:88:fa:5d:a7:c7",
+        "name": "Tank 1",
+        "type": "30lb_v",
+        "maxHeight": 0
+      },
+      {
+        "address": "e1:60:c3:40:2b:0c",
+        "name": "Tank 2",
+        "type": "30lb_v",
+        "maxHeight": 0
+      }
+    ]
+  },
+  "syncTimer": ""
 }

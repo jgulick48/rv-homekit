@@ -17,6 +17,7 @@ import (
 
 	"github.com/jgulick48/rv-homekit/internal/bmv"
 	"github.com/jgulick48/rv-homekit/internal/metrics"
+	"github.com/jgulick48/rv-homekit/internal/mqtt"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 	"github.com/jgulick48/rv-homekit/internal/rvhomekit"
 )
@@ -78,7 +79,8 @@ func startService() {
 		tankSensors.StartScan()
 		time.Sleep(20 * time.Second)
 	}
-	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, &tankSensors)
+	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.Debug)
+	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, &tankSensors, &mqttClient)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
 	rvHomeKitClient.SaveClientConfig(*configLocation)
 	bridge := accessory.NewBridge(accessory.Info{

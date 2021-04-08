@@ -17,6 +17,7 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/bmv"
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
+	"github.com/jgulick48/rv-homekit/internal/mqtt"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
@@ -25,6 +26,7 @@ type client struct {
 	habClient   openHab.Client
 	bmvClient   *bmv.Client
 	tankSensors *mopeka_pro_check.Scanner
+	mqttClient  *mqtt.Client
 	syncFuncs   []func()
 }
 
@@ -63,12 +65,13 @@ func (c *client) SaveClientConfig(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors *mopeka_pro_check.Scanner) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors *mopeka_pro_check.Scanner, mqttClient *mqtt.Client) Client {
 	return &client{
 		config:      config,
 		habClient:   habClient,
 		bmvClient:   bmvClient,
 		tankSensors: tankSensors,
+		mqttClient:  mqttClient,
 		syncFuncs:   make([]func(), 0),
 	}
 }
@@ -184,6 +187,15 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 	var bmvClient bmv.Client
 	if c.bmvClient != nil {
 		bmvClient = *c.bmvClient
+	} else if c.mqttClient != nil {
+		mqttClient := *c.mqttClient
+		go func() {
+			for {
+				mqttClient.Connect()
+				log.Printf("Mqtt connection lost, reconnecting.")
+			}
+		}()
+		bmvClient = mqttClient.GetBatteryClient()
 	} else {
 		return accessories, false
 	}
@@ -213,6 +225,12 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 			if temp, ok := bmvClient.GetBatteryTemperature(); ok {
 				_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
 				_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if timeRemaining, ok := bmvClient.GetTimeToGo(); ok {
+				_ = metrics.Metrics.Gauge("battery.timeRemaining", timeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
+			}
+			if chargeTimeRemaining, ok := bmvClient.GetChargeTimeRemaining(); ok {
+				_ = metrics.Metrics.Gauge("battery.chargeTimeRemaining", chargeTimeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
 			}
 		}
 	}
