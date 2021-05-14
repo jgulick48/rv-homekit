@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"time"
@@ -22,7 +23,10 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/rvhomekit"
 )
 
+var configLocation = flag.String("configFile", "./config.json", "Location for the configuration file.")
+
 func main() {
+
 	startService()
 	exitStatus, err := panicwrap.BasicWrap(panicHandler)
 	if err != nil {
@@ -51,8 +55,6 @@ func startService() {
 		log.Println(err)
 	}
 	log.Print(path)
-	configLocation := flag.String("configFile", "./config.json", "Location for the configuration file.")
-	flag.Parse()
 	config := rvhomekit.LoadClientConfig(*configLocation)
 	if config.StatsServer != "" {
 		metrics.Metrics, err = statsd.New(config.StatsServer)
@@ -105,6 +107,7 @@ func startService() {
 		syncTimer = duration
 	}
 	ticker := time.NewTicker(syncTimer)
+	defer ticker.Stop()
 	done := make(chan bool)
 	go func() {
 		for {

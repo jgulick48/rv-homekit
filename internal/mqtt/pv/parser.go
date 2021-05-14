@@ -13,7 +13,7 @@ import (
 func NewPVClient() Client {
 	client := Client{
 		values: map[string]pvMetric{},
-		mux:    sync.Mutex{},
+		mux:    sync.RWMutex{},
 	}
 	go func() {
 		timer := time.NewTicker(10 * time.Second)
@@ -32,14 +32,16 @@ type pvMetric struct {
 
 func (c *Client) sendAllMetrics() {
 	if metrics.StatsEnabled {
+		c.mux.RLock()
 		for _, value := range c.values {
 			metrics.SendGaugeMetric(value.name, value.tags, value.value)
 		}
+		c.mux.RUnlock()
 	}
 }
 
 type Client struct {
-	mux    sync.Mutex
+	mux    sync.RWMutex
 	values map[string]pvMetric
 }
 
@@ -72,14 +74,15 @@ func (c Client) ParseHistoryData(segments []string, message models.Message) ([]s
 	if !shouldParse {
 		return []string{}, 0
 	}
-	c.mux.Lock()
-	defer c.mux.Unlock()
 	key := fmt.Sprintf("%s_%s", metricName, strings.Join(tags, "_"))
+	c.mux.Lock()
 	c.values[key] = pvMetric{
 		name:  metricName,
 		value: message.Value.Float64,
 		tags:  tags,
 	}
+	c.mux.Unlock()
+
 	return append([]string{metricName}, tags...), message.Value.Float64
 }
 
@@ -95,14 +98,15 @@ func (c Client) ParseDCData(segments []string, message models.Message) ([]string
 	if !shouldParse {
 		return []string{}, 0
 	}
-	c.mux.Lock()
-	defer c.mux.Unlock()
+
 	key := fmt.Sprintf("%s_%s", metricName, strings.Join(tags, "_"))
+	c.mux.Lock()
 	c.values[key] = pvMetric{
 		name:  metricName,
 		value: message.Value.Float64,
 		tags:  tags,
 	}
+	c.mux.Unlock()
 	return append([]string{metricName}, tags...), message.Value.Float64
 }
 
@@ -118,14 +122,14 @@ func (c Client) ParsePVData(segments []string, message models.Message) ([]string
 	if !shouldParse {
 		return []string{}, 0
 	}
-	c.mux.Lock()
-	defer c.mux.Unlock()
 	key := fmt.Sprintf("%s_%s", metricName, strings.Join(tags, "_"))
+	c.mux.Lock()
 	c.values[key] = pvMetric{
 		name:  metricName,
 		value: message.Value.Float64,
 		tags:  tags,
 	}
+	c.mux.Unlock()
 	return append([]string{metricName}, tags...), message.Value.Float64
 }
 

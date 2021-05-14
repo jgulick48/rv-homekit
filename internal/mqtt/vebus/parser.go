@@ -13,7 +13,7 @@ import (
 func NewVeBusClient() Client {
 	client := Client{
 		values: map[string]vebusMetric{},
-		mux:    sync.Mutex{},
+		mux:    sync.RWMutex{},
 	}
 	go func() {
 		timer := time.NewTicker(10 * time.Second)
@@ -31,7 +31,7 @@ type vebusMetric struct {
 }
 
 type Client struct {
-	mux    sync.Mutex
+	mux    sync.RWMutex
 	values map[string]vebusMetric
 }
 
@@ -50,9 +50,11 @@ func (c *Client) GetDataParser(segments []string, defaultParser func(topic []str
 
 func (c *Client) sendAllMetrics() {
 	if metrics.StatsEnabled {
+		c.mux.RLock()
 		for _, value := range c.values {
 			metrics.SendGaugeMetric(value.name, value.tags, value.value)
 		}
+		c.mux.RUnlock()
 	}
 }
 
@@ -73,14 +75,14 @@ func (c *Client) ParseACData(segments []string, message models.Message) ([]strin
 	if metricName == "" || !shouldSend {
 		return []string{}, 0
 	}
-	c.mux.Lock()
-	defer c.mux.Unlock()
 	key := fmt.Sprintf("%s_%s", metricName, strings.Join(tags, "_"))
+	c.mux.Lock()
 	c.values[key] = vebusMetric{
 		name:  metricName,
 		value: message.Value.Float64,
 		tags:  tags,
 	}
+	c.mux.Unlock()
 	return append([]string{metricName}, tags...), message.Value.Float64
 }
 

@@ -20,19 +20,23 @@ type Client interface {
 	Close()
 	Connect()
 	GetBatteryClient() bmv.Client
+	IsEnabled() bool
 }
 
 func NewClient(config models.MQTTConfiguration, debug bool) Client {
-	client := client{
-		config:   config,
-		done:     make(chan bool),
-		messages: make(chan mqtt.Message),
-		battery:  battery.NewBatteryClient(),
-		vebus:    vebus.NewVeBusClient(),
-		pv:       pv.NewPVClient(),
-		debug:    debug,
+	if config.Host != "" {
+		client := client{
+			config:   config,
+			done:     make(chan bool),
+			messages: make(chan mqtt.Message),
+			battery:  battery.NewBatteryClient(),
+			vebus:    vebus.NewVeBusClient(),
+			pv:       pv.NewPVClient(),
+			debug:    debug,
+		}
+		return &client
 	}
-	return &client
+	return &client{config: config}
 }
 
 type client struct {
@@ -48,6 +52,10 @@ type client struct {
 
 func (c *client) Close() {
 	c.done <- true
+}
+
+func (c *client) IsEnabled() bool {
+	return c.config.Host != ""
 }
 
 func (c *client) Connect() {

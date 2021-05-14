@@ -189,13 +189,17 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 		bmvClient = *c.bmvClient
 	} else if c.mqttClient != nil {
 		mqttClient := *c.mqttClient
-		go func() {
-			for {
-				mqttClient.Connect()
-				log.Printf("Mqtt connection lost, reconnecting.")
-			}
-		}()
-		bmvClient = mqttClient.GetBatteryClient()
+		if mqttClient.IsEnabled() {
+			go func() {
+				for {
+					mqttClient.Connect()
+					log.Printf("Mqtt connection lost, reconnecting.")
+				}
+			}()
+			bmvClient = mqttClient.GetBatteryClient()
+		} else {
+			return accessories, false
+		}
 	} else {
 		return accessories, false
 	}
@@ -257,8 +261,8 @@ func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*a
 		if !ok {
 			deviceConfig = models.MopekaLevelSensor{
 				Address:   device.GetAddress(),
-				Name:      fmt.Sprintf("Tank %v", i),
-				Type:      "",
+				Name:      fmt.Sprintf("Tank %v", i+1),
+				Type:      c.config.TankSensors.DefaultTankType,
 				MaxHeight: 0,
 			}
 			c.config.TankSensors.Devices = append(c.config.TankSensors.Devices, deviceConfig)

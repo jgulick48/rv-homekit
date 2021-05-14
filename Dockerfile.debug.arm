@@ -1,0 +1,21 @@
+FROM golang:1.16.2 as builder
+
+WORKDIR /app
+
+COPY go.mod .
+COPY go.sum .
+
+RUN go mod download
+
+COPY ./ ./
+
+RUN go test ./...
+
+RUN GOOS=linux GOARCH=arm GOARM=5 CGO_ENABLED=0 go build
+
+FROM alpine:3.12.0
+
+COPY --from=builder /app/rv-homekit /bin/rv-homekit
+WORKDIR /var/lib/rv-homekit/
+
+CMD ["/bin/rv-homekit","-configFile=/var/lib/rv-homekit/config.json", "-cpuprofile=/var/lib/rv-homekit/cpu.prof", "-memprofile=/var/libe/rv-homekie/mem.prof"]

@@ -10,9 +10,12 @@ import (
 
 func AutomateGeneratorStart(paramaters models.Automation, client bmv.Client, switchFunc func(bool), stateFunc func() bool) {
 	go func() {
-		automationTriggered := false
-		var lastStarted time.Time
-		var lastStopped time.Time
+		automationState := AutomationState{
+			LastStarted:         0,
+			LastStopped:         0,
+			AutomationTriggered: false,
+		}
+		automationState.LoadFromFile("")
 		for {
 			time.Sleep(time.Second * 10)
 			state, ok := client.GetBatteryStateOfCharge()
@@ -21,29 +24,31 @@ func AutomateGeneratorStart(paramaters models.Automation, client bmv.Client, swi
 			}
 			if state < paramaters.LowValue {
 				if stateFunc() {
-					if !automationTriggered {
+					if !automationState.AutomationTriggered {
 						log.Printf("Generator already on, skipping start.")
 					}
 				} else {
 					log.Printf("State of charge below threshold of %v, starting generator.", paramaters.LowValue)
 					if paramaters.CoolDown.Duration > 0 {
-						if time.Now().Before(lastStopped.Add(paramaters.CoolDown.Duration)) {
-							log.Printf("Cooldown has not yet finished, waiting until at least %v to start generator.", lastStopped.Add(paramaters.CoolDown.Duration))
+						if time.Now().Before(time.Unix(automationState.LastStopped, 0).Add(paramaters.CoolDown.Duration)) {
+							log.Printf("Cooldown has not yet finished, waiting until at least %v to start generator.", time.Unix(automationState.LastStopped, 0).Add(paramaters.CoolDown.Duration))
 							continue
 						}
 					}
 					switchFunc(true)
-					automationTriggered = true
-					lastStarted = time.Now()
+					automationState.AutomationTriggered = true
+					automationState.LastStarted = time.Now().Unix()
+					automationState.SaveToFile("")
 				}
-			} else if automationTriggered && shouldShutOff(paramaters, lastStarted, client) {
+			} else if automationState.AutomationTriggered && shouldShutOff(paramaters, time.Unix(automationState.LastStarted, 0), client) {
 				if paramaters.OffDelay.Duration > 0 {
 					log.Printf("Waiting %s before stopping generater.", paramaters.OffDelay)
 					time.Sleep(paramaters.OffDelay.Duration)
 				}
-				lastStopped = time.Now()
+				automationState.LastStopped = time.Now().Unix()
 				switchFunc(false)
-				automationTriggered = false
+				automationState.AutomationTriggered = false
+				automationState.SaveToFile("")
 				continue
 			}
 		}
