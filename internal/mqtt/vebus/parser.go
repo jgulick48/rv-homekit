@@ -19,9 +19,9 @@ func NewVeBusClient() Client {
 		values: map[string]vebusMetric{},
 		mux:    sync.RWMutex{},
 		automation: Automation{
-			hpDevices:             make(map[string]hpDevice, 0),
-			lastShutdownTime:      0,
-			shutdownDueToPowerOut: false,
+			HpDevices:             make(map[string]hpDevice, 0),
+			LastShutdownTime:      0,
+			ShutdownDueToPowerOut: false,
 		},
 	}
 	client.LoadFromFile("")
@@ -47,9 +47,9 @@ type Client struct {
 }
 
 type Automation struct {
-	hpDevices             map[string]hpDevice `json:"hpDevices"`
-	lastShutdownTime      float64             `json:"lastShutdownTime"`
-	shutdownDueToPowerOut bool                `json:"shutdownDueToPowerOut"`
+	HpDevices             map[string]hpDevice `json:"HpDevices"`
+	LastShutdownTime      float64             `json:"LastShutdownTime"`
+	ShutdownDueToPowerOut bool                `json:"ShutdownDueToPowerOut"`
 }
 
 type hpDevice struct {
@@ -83,8 +83,8 @@ func (c *Client) SaveToFile(filename string) {
 }
 
 func (c *Client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
-	if _, ok := c.automation.hpDevices[item.Name]; !ok {
-		c.automation.hpDevices[item.Name] = hpDevice{
+	if _, ok := c.automation.HpDevices[item.Name]; !ok {
+		c.automation.HpDevices[item.Name] = hpDevice{
 			item:  *item,
 			state: item.State,
 		}
@@ -171,25 +171,25 @@ func (c *Client) checkForShutdown(segments []string, value float64) {
 	switch segments[len(segments)-1] {
 	case "V":
 		if value > 105 {
-			if c.automation.shutdownDueToPowerOut {
-				if float64(time.Now().Unix()) > c.automation.lastShutdownTime+(time.Minute.Seconds()) {
+			if c.automation.ShutdownDueToPowerOut {
+				if float64(time.Now().Unix()) > c.automation.LastShutdownTime+(time.Minute.Seconds()) {
 					c.resetHPDevices()
-					c.automation.shutdownDueToPowerOut = false
+					c.automation.ShutdownDueToPowerOut = false
 				}
 			}
 		} else {
-			c.automation.lastShutdownTime = float64(time.Now().Unix())
-			if !c.automation.shutdownDueToPowerOut {
+			c.automation.LastShutdownTime = float64(time.Now().Unix())
+			if !c.automation.ShutdownDueToPowerOut {
 				log.Printf("Shutting high power devices down due to power failure. Voltage at %v", value)
 				c.shutdownHPDevices()
-				c.automation.shutdownDueToPowerOut = true
+				c.automation.ShutdownDueToPowerOut = true
 			}
 		}
 	}
 }
 
 func (c *Client) shutdownHPDevices() {
-	for _, item := range c.automation.hpDevices {
+	for _, item := range c.automation.HpDevices {
 		item.item.GetCurrentValue()
 		item.state = item.item.State
 		log.Printf("Setting item %s to OFF from %s due to power failure.", item.item.Name, item.item.State)
@@ -199,7 +199,7 @@ func (c *Client) shutdownHPDevices() {
 }
 
 func (c *Client) resetHPDevices() {
-	for _, item := range c.automation.hpDevices {
+	for _, item := range c.automation.HpDevices {
 		if item.state != "OFF" {
 			log.Printf("Setting item %s to %s from OFF due to power restoration.", item.item.Name, item.item.State)
 			item.item.SetItemState(item.state)
