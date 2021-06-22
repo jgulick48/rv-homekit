@@ -54,7 +54,7 @@ type Automation struct {
 
 type hpDevice struct {
 	item  openHab.EnrichedItemDTO
-	state string
+	State string `json:"state"`
 }
 
 func (c *Client) LoadFromFile(filename string) {
@@ -83,11 +83,15 @@ func (c *Client) SaveToFile(filename string) {
 }
 
 func (c *Client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
-	if _, ok := c.automation.HpDevices[item.Name]; !ok {
+	device, ok := c.automation.HpDevices[item.Name]
+	if !ok {
 		c.automation.HpDevices[item.Name] = hpDevice{
 			item:  *item,
-			state: item.State,
+			State: item.State,
 		}
+	} else {
+		device.item = *item
+		c.automation.HpDevices[item.Name] = device
 	}
 }
 
@@ -191,7 +195,7 @@ func (c *Client) checkForShutdown(segments []string, value float64) {
 func (c *Client) shutdownHPDevices() {
 	for _, item := range c.automation.HpDevices {
 		item.item.GetCurrentValue()
-		item.state = item.item.State
+		item.State = item.item.State
 		log.Printf("Setting item %s to OFF from %s due to power failure.", item.item.Name, item.item.State)
 		item.item.SetItemState("OFF")
 	}
@@ -200,9 +204,9 @@ func (c *Client) shutdownHPDevices() {
 
 func (c *Client) resetHPDevices() {
 	for _, item := range c.automation.HpDevices {
-		if item.state != "OFF" {
+		if item.State != "OFF" {
 			log.Printf("Setting item %s to %s from OFF due to power restoration.", item.item.Name, item.item.State)
-			item.item.SetItemState(item.state)
+			item.item.SetItemState(item.State)
 		}
 	}
 }
