@@ -19,12 +19,10 @@ func (a *AutomationState) LoadFromFile(filename string) {
 	configFile, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Printf("No config file found. Making new IDs")
-		panic(err)
 	}
 	err = json.Unmarshal(configFile, &a)
 	if err != nil {
 		log.Printf("Invliad config file provided")
-		panic(err)
 	}
 }
 

@@ -475,6 +475,14 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		if config, ok := c.config.Automation["generator"]; ok {
 			automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 		}
+	} else if c.mqttClient != nil {
+		mqttClient := *c.mqttClient
+		if mqttClient.IsEnabled() {
+			bmvClient := mqttClient.GetBatteryClient()
+			if config, ok := c.config.Automation["generator"]; ok {
+				automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			}
+		}
 	}
 	accessories = append(accessories, ac.Accessory)
 	return accessories
@@ -486,6 +494,10 @@ func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name st
 		ID:   id,
 	})
 	ac.Switch.On.OnValueRemoteUpdate(item.GetChangeFunction())
+	if name == "Electric Water Heater" && c.mqttClient != nil {
+		mqttClient := *c.mqttClient
+		mqttClient.RegisterHPDevice(&item)
+	}
 	lastValue := ""
 	syncFunc := func() {
 		item.GetCurrentValue()
@@ -595,6 +607,10 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 	if !ok {
 		log.Printf("Unable to get current mode for %s, skipping thermostat.", thing.UID)
 		return accessories
+	}
+	if c.mqttClient != nil {
+		mqttClient := *c.mqttClient
+		mqttClient.RegisterHPDevice(&modeThing)
 	}
 	statusThing, ok := getThingFromChannels(channels, thing.UID, "status", c.habClient)
 	if !ok {

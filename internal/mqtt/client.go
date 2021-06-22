@@ -14,6 +14,7 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/mqtt/battery"
 	"github.com/jgulick48/rv-homekit/internal/mqtt/pv"
 	"github.com/jgulick48/rv-homekit/internal/mqtt/vebus"
+	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
 type Client interface {
@@ -21,6 +22,7 @@ type Client interface {
 	Connect()
 	GetBatteryClient() bmv.Client
 	IsEnabled() bool
+	RegisterHPDevice(item *openHab.EnrichedItemDTO)
 }
 
 func NewClient(config models.MQTTConfiguration, debug bool) Client {
@@ -56,6 +58,10 @@ func (c *client) Close() {
 
 func (c *client) IsEnabled() bool {
 	return c.config.Host != ""
+}
+
+func (c *client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
+	c.vebus.RegisterHPDevice(item)
 }
 
 func (c *client) Connect() {

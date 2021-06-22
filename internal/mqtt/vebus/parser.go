@@ -1,20 +1,30 @@
 package vebus
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
+	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
 func NewVeBusClient() Client {
 	client := Client{
 		values: map[string]vebusMetric{},
 		mux:    sync.RWMutex{},
+		automation: Automation{
+			hpDevices:             make(map[string]hpDevice, 0),
+			lastShutdownTime:      0,
+			shutdownDueToPowerOut: false,
+		},
 	}
+	client.LoadFromFile("")
 	go func() {
 		timer := time.NewTicker(10 * time.Second)
 		for range timer.C {
@@ -31,8 +41,54 @@ type vebusMetric struct {
 }
 
 type Client struct {
-	mux    sync.RWMutex
-	values map[string]vebusMetric
+	mux        sync.RWMutex
+	values     map[string]vebusMetric
+	automation Automation
+}
+
+type Automation struct {
+	hpDevices             map[string]hpDevice `json:"hpDevices"`
+	lastShutdownTime      float64             `json:"lastShutdownTime"`
+	shutdownDueToPowerOut bool                `json:"shutdownDueToPowerOut"`
+}
+
+type hpDevice struct {
+	item  openHab.EnrichedItemDTO
+	state string
+}
+
+func (c *Client) LoadFromFile(filename string) {
+	if filename == "" {
+		filename = "./hpItems.json"
+	}
+	configFile, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Printf("No state file found. Making new IDs")
+	}
+	err = json.Unmarshal(configFile, &c.automation)
+	if err != nil {
+		log.Printf("Invliad config file provided")
+	}
+}
+
+func (c *Client) SaveToFile(filename string) {
+	if filename == "" {
+		filename = "./hpItems.json"
+	}
+	data, err := json.MarshalIndent(c.automation, "", "  ")
+	if err != nil {
+		return
+	}
+	ioutil.WriteFile(filename, data, 0644)
+}
+
+func (c *Client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
+	if _, ok := c.automation.hpDevices[item.Name]; !ok {
+		c.automation.hpDevices[item.Name] = hpDevice{
+			item:  *item,
+			state: item.State,
+		}
+	}
 }
 
 func (c *Client) GetDataParser(segments []string, defaultParser func(topic []string, message models.Message) ([]string, float64)) func(topic []string, message models.Message) ([]string, float64) {
@@ -69,8 +125,12 @@ func (c *Client) ParseACData(segments []string, message models.Message) ([]strin
 	var metricName string
 	var shouldSend bool
 	switch segments[5] {
-	case "ActiveIn", "Out":
+	case "ActiveIn":
+		c.checkForShutdown(segments, message.Value.Float64)
 		tags, metricName, shouldSend = c.parseACLineMeasurements(tags, segments)
+	case "Out":
+		tags, metricName, shouldSend = c.parseACLineMeasurements(tags, segments)
+
 	}
 	if metricName == "" || !shouldSend {
 		return []string{}, 0
@@ -105,4 +165,44 @@ func (c *Client) parseACLineMeasurements(tags []string, segments []string) ([]st
 		return tags, "", false
 	}
 	return tags, fmt.Sprintf("ac_%s_%s", strings.ToLower(segments[5]), unit), true
+}
+
+func (c *Client) checkForShutdown(segments []string, value float64) {
+	switch segments[len(segments)-1] {
+	case "V":
+		if value > 105 {
+			if c.automation.shutdownDueToPowerOut {
+				if float64(time.Now().Unix()) > c.automation.lastShutdownTime+(time.Minute.Seconds()) {
+					c.resetHPDevices()
+					c.automation.shutdownDueToPowerOut = false
+				}
+			}
+		} else {
+			c.automation.lastShutdownTime = float64(time.Now().Unix())
+			if !c.automation.shutdownDueToPowerOut {
+				log.Printf("Shutting high power devices down due to power failure. Voltage at %v", value)
+				c.shutdownHPDevices()
+				c.automation.shutdownDueToPowerOut = true
+			}
+		}
+	}
+}
+
+func (c *Client) shutdownHPDevices() {
+	for _, item := range c.automation.hpDevices {
+		item.item.GetCurrentValue()
+		item.state = item.item.State
+		log.Printf("Setting item %s to OFF from %s due to power failure.", item.item.Name, item.item.State)
+		item.item.SetItemState("OFF")
+	}
+	c.SaveToFile("")
+}
+
+func (c *Client) resetHPDevices() {
+	for _, item := range c.automation.hpDevices {
+		if item.state != "OFF" {
+			log.Printf("Setting item %s to %s from OFF due to power restoration.", item.item.Name, item.item.State)
+			item.item.SetItemState(item.state)
+		}
+	}
 }

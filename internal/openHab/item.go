@@ -177,6 +177,10 @@ func (i *EnrichedItemDTO) GetCurrentValue() {
 	}
 }
 
+func (i *EnrichedItemDTO) SetItemState(value string) {
+	changeItemValue(i.Link, value)
+}
+
 func (i *EnrichedItemDTO) GetCurrentState() bool {
 	i.GetCurrentValue()
 	switch i.State {
