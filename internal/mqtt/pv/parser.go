@@ -41,7 +41,7 @@ var (
 		},
 		[]string{
 			// Which user has requested the operation?
-			"pvcharger.id",
+			"pvcharger_id",
 			// Of what type is the operation?
 			"deployment",
 			"source",
@@ -53,14 +53,14 @@ var (
 func formatPrometheusMetric(name string, tags []string, value float64) {
 	labels := make(prometheus.Labels)
 	parts := strings.Split(name, "_")
-	if len(parts) >= 3 {
+	if len(parts) < 3 {
 		return
 	}
 	labels["source"] = parts[1]
 	if len(parts) == 3 {
 		labels["measurementType"] = parts[2]
 	} else if len(parts) == 4 {
-		labels["measurementType"] = strings.Join(parts[2:3], "_")
+		labels["measurementType"] = strings.Join(parts[2:4], "_")
 	}
 	for _, tag := range tags {
 		tagParts := strings.Split(tag, ":")
@@ -111,7 +111,7 @@ func (c Client) ParseHistoryData(segments []string, message models.Message) ([]s
 	}
 	tags := []string{
 		metrics.FormatTag("deployment", segments[1]),
-		metrics.FormatTag("pvcharger.id", segments[3]),
+		metrics.FormatTag("pvcharger_id", segments[3]),
 	}
 	tags, metricName, shouldParse := parseHistoryMeasurements(tags, segments)
 	if !shouldParse {
@@ -135,7 +135,7 @@ func (c Client) ParseDCData(segments []string, message models.Message) ([]string
 	}
 	tags := []string{
 		metrics.FormatTag("deployment", segments[1]),
-		metrics.FormatTag("pvcharger.id", segments[3]),
+		metrics.FormatTag("pvcharger_id", segments[3]),
 	}
 	tags, metricName, shouldParse := parseDCLineMeasurements(tags, segments)
 	if !shouldParse {
@@ -159,7 +159,7 @@ func (c Client) ParsePVData(segments []string, message models.Message) ([]string
 	}
 	tags := []string{
 		metrics.FormatTag("deployment", segments[1]),
-		metrics.FormatTag("pvcharger.id", segments[3]),
+		metrics.FormatTag("pvcharger_id", segments[3]),
 	}
 	tags, metricName, shouldParse := parsePVLineMeasurements(tags, segments)
 	if !shouldParse {

@@ -48,7 +48,7 @@ var (
 			"line",
 			// Of what type is the operation?
 			"deployment",
-			"vebus.id",
+			"vebus_id",
 			"measurementType",
 			"direction",
 		},
@@ -155,6 +155,9 @@ func formatPrometheusMetric(name string, tags []string, value float64) {
 		}
 		labels[tagParts[0]] = tagParts[1]
 	}
+	if _, ok := labels["line"]; !ok {
+		labels["line"] = "L1"
+	}
 	acMeasurements.With(labels).Set(value)
 }
 
@@ -164,7 +167,7 @@ func (c *Client) ParseACData(segments []string, message models.Message) ([]strin
 	}
 	tags := []string{
 		metrics.FormatTag("deployment", segments[1]),
-		metrics.FormatTag("vebus.id", segments[3]),
+		metrics.FormatTag("vebus_id", segments[3]),
 	}
 	var metricName string
 	var shouldSend bool

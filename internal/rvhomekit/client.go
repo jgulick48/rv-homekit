@@ -72,7 +72,6 @@ func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Cl
 		batteryAutoChargeStarted,
 		batteryAutoChargeState,
 		batteryChargeTimeRemaining,
-		batteryAmpHours,
 		batteryCurrent,
 		batteryStateOfCharge,
 		batteryTemperature,
