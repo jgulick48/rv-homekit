@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
 	"github.com/jgulick48/rv-homekit/internal/openHab"
@@ -24,6 +26,7 @@ func NewVeBusClient() Client {
 			ShutdownDueToPowerOut: false,
 		},
 	}
+	prometheus.MustRegister(acMeasurements)
 	client.LoadFromFile("")
 	go func() {
 		timer := time.NewTicker(10 * time.Second)
@@ -33,6 +36,24 @@ func NewVeBusClient() Client {
 	}()
 	return client
 }
+
+var (
+	acMeasurements = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "acMeasurement",
+			Help: "Number of blob storage operations waiting to be processed.",
+		},
+		[]string{
+			// Which user has requested the operation?
+			"line",
+			// Of what type is the operation?
+			"deployment",
+			"vebus.id",
+			"measurementType",
+			"direction",
+		},
+	)
+)
 
 type vebusMetric struct {
 	name  string
@@ -113,9 +134,28 @@ func (c *Client) sendAllMetrics() {
 		c.mux.RLock()
 		for _, value := range c.values {
 			metrics.SendGaugeMetric(value.name, value.tags, value.value)
+			formatPrometheusMetric(value.name, value.tags, value.value)
 		}
 		c.mux.RUnlock()
 	}
+}
+
+func formatPrometheusMetric(name string, tags []string, value float64) {
+	labels := make(prometheus.Labels)
+	parts := strings.Split(name, "_")
+	if len(parts) != 3 {
+		return
+	}
+	labels["direction"] = parts[1]
+	labels["measurementType"] = parts[2]
+	for _, tag := range tags {
+		tagParts := strings.Split(tag, ":")
+		if len(tagParts) != 2 {
+			continue
+		}
+		labels[tagParts[0]] = tagParts[1]
+	}
+	acMeasurements.With(labels).Set(value)
 }
 
 func (c *Client) ParseACData(segments []string, message models.Message) ([]string, float64) {

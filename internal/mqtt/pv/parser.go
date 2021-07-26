@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
 )
@@ -15,6 +17,7 @@ func NewPVClient() Client {
 		values: map[string]pvMetric{},
 		mux:    sync.RWMutex{},
 	}
+	prometheus.MustRegister(pvMeasurements)
 	go func() {
 		timer := time.NewTicker(10 * time.Second)
 		for range timer.C {
@@ -30,11 +33,51 @@ type pvMetric struct {
 	tags  []string
 }
 
+var (
+	pvMeasurements = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pvMeasurement",
+			Help: "Number of blob storage operations waiting to be processed.",
+		},
+		[]string{
+			// Which user has requested the operation?
+			"pvcharger.id",
+			// Of what type is the operation?
+			"deployment",
+			"source",
+			"measurementType",
+		},
+	)
+)
+
+func formatPrometheusMetric(name string, tags []string, value float64) {
+	labels := make(prometheus.Labels)
+	parts := strings.Split(name, "_")
+	if len(parts) >= 3 {
+		return
+	}
+	labels["source"] = parts[1]
+	if len(parts) == 3 {
+		labels["measurementType"] = parts[2]
+	} else if len(parts) == 4 {
+		labels["measurementType"] = strings.Join(parts[2:3], "_")
+	}
+	for _, tag := range tags {
+		tagParts := strings.Split(tag, ":")
+		if len(tagParts) != 2 {
+			continue
+		}
+		labels[tagParts[0]] = tagParts[1]
+	}
+	pvMeasurements.With(labels).Set(value)
+}
+
 func (c *Client) sendAllMetrics() {
 	if metrics.StatsEnabled {
 		c.mux.RLock()
 		for _, value := range c.values {
 			metrics.SendGaugeMetric(value.name, value.tags, value.value)
+			formatPrometheusMetric(value.name, value.tags, value.value)
 		}
 		c.mux.RUnlock()
 	}

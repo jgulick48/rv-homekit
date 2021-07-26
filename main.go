@@ -15,6 +15,7 @@ import (
 	"github.com/jgulick48/hc/accessory"
 	"github.com/jgulick48/mopeka_pro_check"
 	"github.com/mitchellh/panicwrap"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/jgulick48/rv-homekit/internal/bmv"
 	"github.com/jgulick48/rv-homekit/internal/metrics"
@@ -137,7 +138,10 @@ func startService() {
 
 		log.Fatal(http.ListenAndServe(":8080", nil))
 	}()
-
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":2112", nil)
+	}()
 	hc.OnTermination(func() {
 		<-t.Stop()
 		ticker.Stop()
