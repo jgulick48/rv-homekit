@@ -3,6 +3,7 @@ package rvhomekit
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jgulick48/rv-homekit/internal/tanksensors"
 	"io/ioutil"
 	"log"
 	"math"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jgulick48/hc/accessory"
-	"github.com/jgulick48/mopeka_pro_check"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/jgulick48/rv-homekit/internal/automation"
@@ -26,7 +26,7 @@ type client struct {
 	config      models.Config
 	habClient   openHab.Client
 	bmvClient   *bmv.Client
-	tankSensors *mopeka_pro_check.Scanner
+	tankSensors tanksensors.Client
 	mqttClient  *mqtt.Client
 	syncFuncs   []func()
 }
@@ -66,7 +66,7 @@ func (c *client) SaveClientConfig(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors *mopeka_pro_check.Scanner, mqttClient *mqtt.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient *mqtt.Client) Client {
 	prometheus.MustRegister(
 		batteryAmpHours,
 		batteryAutoChargeStarted,
@@ -142,6 +142,8 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 	var foundTankSensors int
 	if c.tankSensors != nil {
 		itemIDs, accessories, maxID, foundTankSensors = c.registerTankSensors(itemIDs, accessories)
+	} else {
+		log.Printf("Tank sensors not configured skipping.")
 	}
 	for _, thing := range things {
 		if !thing.Editable {
@@ -524,7 +526,13 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		log.Printf("Unable to get current state for %s, skipping generator.", thing.UID)
 		return accessories, automation.Automation{}
 	}
-	ac.Switch.On.OnValueRemoteUpdate(startStopThing.GetChangeFunction())
+	ac.Switch.On.OnValueRemoteUpdate(func(state bool) {
+		changeStateFunc := startStopThing.GetChangeFunction()
+		if !state {
+			time.Sleep(c.config.GeneratorOffDelay)
+		}
+		changeStateFunc(state)
+	})
 	if c.bmvClient != nil {
 		ac.AddBatteryLevel()
 	}

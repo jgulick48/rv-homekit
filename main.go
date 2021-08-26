@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/jgulick48/rv-homekit/internal/tanksensors"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -13,7 +14,6 @@ import (
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
-	"github.com/jgulick48/mopeka_pro_check"
 	"github.com/mitchellh/panicwrap"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -76,14 +76,12 @@ func startService() {
 	if err != nil {
 		panic(err)
 	}
-	var tankSensors mopeka_pro_check.Scanner
+	var tankSensors tanksensors.Client
 	if config.TankSensors.Enabled {
-		tankSensors = mopeka_pro_check.NewScanner(20 * time.Second)
-		tankSensors.StartScan()
-		time.Sleep(20 * time.Second)
+		tankSensors = tanksensors.NewTankSensorClient(config.TankSensors.APIAddress)
 	}
 	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.Debug)
-	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, &tankSensors, &mqttClient)
+	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, &mqttClient)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
 	rvHomeKitClient.SaveClientConfig(*configLocation)
 	bridge := accessory.NewBridge(accessory.Info{
