@@ -29,6 +29,8 @@ type MQTTConfiguration struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	DeviceID string `json:"deviceId"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type BMVConfig struct {
