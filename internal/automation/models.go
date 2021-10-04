@@ -6,13 +6,13 @@ import (
 	"log"
 )
 
-type AutomationState struct {
+type State struct {
 	LastStarted         int64 `json:"lastStarted"`
 	LastStopped         int64 `json:"lastStopped"`
 	AutomationTriggered bool  `json:"automationTriggered"`
 }
 
-func (a *AutomationState) LoadFromFile(filename string) {
+func (a *State) LoadFromFile(filename string) {
 	if filename == "" {
 		filename = "./state.json"
 	}
@@ -26,7 +26,7 @@ func (a *AutomationState) LoadFromFile(filename string) {
 	}
 }
 
-func (a *AutomationState) SaveToFile(filename string) {
+func (a *State) SaveToFile(filename string) {
 	if filename == "" {
 		filename = "./state.json"
 	}

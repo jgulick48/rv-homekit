@@ -108,7 +108,7 @@ func (c Client) ParseDCData(segments []string, message models.Message) ([]string
 	}
 	tags := []string{
 		metrics.FormatTag("deployment", segments[1]),
-		metrics.FormatTag("battery.id", segments[3]),
+		metrics.FormatTag("battery_id", segments[3]),
 	}
 	tags, metricName, shouldParse := parseDCLineMeasurements(tags, segments)
 	if !shouldParse {

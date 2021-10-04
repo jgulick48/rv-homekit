@@ -3,6 +3,7 @@ package rvhomekit
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jgulick48/rv-homekit/internal/tanksensors"
 	"io/ioutil"
 	"log"
 	"math"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jgulick48/hc/accessory"
-	"github.com/jgulick48/mopeka_pro_check"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/jgulick48/rv-homekit/internal/automation"
 	"github.com/jgulick48/rv-homekit/internal/bmv"
@@ -25,7 +26,7 @@ type client struct {
 	config      models.Config
 	habClient   openHab.Client
 	bmvClient   *bmv.Client
-	tankSensors *mopeka_pro_check.Scanner
+	tankSensors tanksensors.Client
 	mqttClient  *mqtt.Client
 	syncFuncs   []func()
 }
@@ -65,7 +66,31 @@ func (c *client) SaveClientConfig(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors *mopeka_pro_check.Scanner, mqttClient *mqtt.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient *mqtt.Client) Client {
+	prometheus.MustRegister(
+		batteryAmpHours,
+		batteryAutoChargeStarted,
+		batteryAutoChargeState,
+		batteryChargeTimeRemaining,
+		batteryCurrent,
+		batteryStateOfCharge,
+		batteryTemperature,
+		batteryTimeRemaining,
+		batteryVolts,
+		batteryWatts,
+		tankBatteryPercent,
+		tankBatteryVoltage,
+		tankLevel,
+		tankLevelMM,
+		tankSensorQuality,
+		tankSensorRSSI,
+		tankTempCelsius,
+		tankTempFahrenheit,
+		generatorStatus,
+		hvacCurrentMode,
+		hvacCurrentStatus,
+		hvacTemperature,
+	)
 	return &client{
 		config:      config,
 		habClient:   habClient,
@@ -117,6 +142,8 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 	var foundTankSensors int
 	if c.tankSensors != nil {
 		itemIDs, accessories, maxID, foundTankSensors = c.registerTankSensors(itemIDs, accessories)
+	} else {
+		log.Printf("Tank sensors not configured skipping.")
 	}
 	for _, thing := range things {
 		if !thing.Editable {
@@ -140,7 +167,17 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 				id = maxID
 				itemIDs[thing.UID] = id
 			}
-			accessories = c.registerGenerator(id, thing, accessories)
+			var generatorAutomation automation.Automation
+			accessories, generatorAutomation = c.registerGenerator(id, thing, accessories)
+			if generatorAutomation.IsEnabled() {
+				id, ok := itemIDs["BatteryAutoCharge"]
+				if !ok {
+					maxID++
+					id = maxID
+					itemIDs["BatteryAutoCharge"] = id
+				}
+				accessories = c.registerGeneratorAutomation(id, generatorAutomation, accessories)
+			}
 			continue
 		}
 		for _, channel := range thing.Channels {
@@ -213,28 +250,37 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 		if metrics.StatsEnabled {
 			if ok {
 				_ = metrics.Metrics.Gauge("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryStateOfCharge.WithLabelValues(name).Set(soc)
 			}
 			if current, ok := bmvClient.GetBatteryCurrent(); ok {
 				_ = metrics.Metrics.Gauge("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryCurrent.WithLabelValues(name).Set(current)
 			}
 			if voltage, ok := bmvClient.GetBatteryVoltage(); ok {
 				_ = metrics.Metrics.Gauge("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryVolts.WithLabelValues(name).Set(voltage)
 			}
 			if amps, ok := bmvClient.GetConsumedAmpHours(); ok {
 				_ = metrics.Metrics.Gauge("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryAmpHours.WithLabelValues(name).Set(amps)
 			}
 			if watts, ok := bmvClient.GetPower(); ok {
 				_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryWatts.WithLabelValues(name).Set(watts)
 			}
 			if temp, ok := bmvClient.GetBatteryTemperature(); ok {
 				_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryTemperature.WithLabelValues(name, "celsius").Set(temp)
 				_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryTemperature.WithLabelValues(name, "fahrenheit").Set((temp * 1.8) + 32)
 			}
 			if timeRemaining, ok := bmvClient.GetTimeToGo(); ok {
 				_ = metrics.Metrics.Gauge("battery.timeRemaining", timeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryTimeRemaining.WithLabelValues(name).Set(timeRemaining)
 			}
 			if chargeTimeRemaining, ok := bmvClient.GetChargeTimeRemaining(); ok {
 				_ = metrics.Metrics.Gauge("battery.chargeTimeRemaining", chargeTimeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
+				batteryChargeTimeRemaining.WithLabelValues(name).Set(chargeTimeRemaining)
 			}
 		}
 	}
@@ -337,13 +383,21 @@ func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessor
 			}
 			if metrics.StatsEnabled {
 				_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name), fmt.Sprintf("type:%s", device.GetSensorType())}, 1)
+				tankLevel.WithLabelValues(name, device.GetSensorType()).Set(level)
 				_ = metrics.Metrics.Gauge("tank.levelMM", device.GetTankLevelMM(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankLevelMM.WithLabelValues(name).Set(device.GetTankLevelMM())
 				_ = metrics.Metrics.Gauge("tank.tempCelsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankTempCelsius.WithLabelValues(name).Set(temp)
 				_ = metrics.Metrics.Gauge("tank.tempFahrenheit", device.GetTempFahrenheit(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankTempFahrenheit.WithLabelValues(name).Set(device.GetTempFahrenheit())
 				_ = metrics.Metrics.Gauge("tank.batteryPercent", float64(device.GetBatteryLevel()), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankBatteryPercent.WithLabelValues(name).Set(float64(device.GetBatteryLevel()))
 				_ = metrics.Metrics.Gauge("tank.batteryVoltage", device.GetBatteryVoltage(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankBatteryVoltage.WithLabelValues(name).Set(device.GetBatteryVoltage())
 				_ = metrics.Metrics.Gauge("tank.sensorQuality", device.GetReadQuality(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankSensorQuality.WithLabelValues(name).Set(device.GetReadQuality())
 				_ = metrics.Metrics.Gauge("tank.sensorRSSI", float64(device.GetRSSI()), []string{fmt.Sprintf("name:%s", name)}, 1)
+				tankSensorRSSI.WithLabelValues(name).Set(float64(device.GetRSSI()))
 			}
 		} else {
 			log.Printf("Device with name of %s and address of %s was not found.", deviceConfig.Name, deviceConfig.Address)
@@ -369,6 +423,7 @@ func (c *client) registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name
 		level, err := strconv.ParseFloat(item.State, 64)
 		if err == nil && metrics.StatsEnabled {
 			_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
+			tankLevel.WithLabelValues(name, "OneControl").Set(level)
 		}
 		if item.State != lastState {
 			if err == nil {
@@ -407,7 +462,51 @@ func (c *client) registerLightBulb(id uint64, item openHab.EnrichedItemDTO, name
 	return accessories
 }
 
-func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, accessories []*accessory.Accessory) []*accessory.Accessory {
+func (c *client) registerGeneratorAutomation(id uint64, generatorAutomation automation.Automation, accessories []*accessory.Accessory) []*accessory.Accessory {
+	if !generatorAutomation.IsEnabled() {
+		return accessories
+	}
+	ac := accessory.NewSwitch(accessory.Info{
+		Name: "Battery AutoCharge",
+		ID:   id,
+	})
+	ac.Switch.On.OnValueRemoteUpdate(func(shouldStart bool) {
+		if shouldStart {
+			generatorAutomation.StartAutoCharge()
+		} else {
+			generatorAutomation.StopAutoCharge()
+		}
+	})
+	lastState := false
+	ac.Switch.On.SetValue(generatorAutomation.IsAutomationRunning())
+	syncFunc := func() {
+		if generatorAutomation.IsAutomationRunning() != lastState {
+			ac.Switch.On.SetValue(generatorAutomation.IsAutomationRunning())
+			lastState = generatorAutomation.IsAutomationRunning()
+		}
+		if metrics.StatsEnabled {
+			value := float64(0)
+			if lastState {
+				value = 1
+			}
+			_ = metrics.Metrics.Gauge("battery.autocharge.started", value, []string{}, 1)
+			batteryAutoChargeStarted.WithLabelValues().Set(value)
+			if generatorAutomation.IsEnabled() {
+				_ = metrics.Metrics.Gauge("battery.autocharge.state", 1, []string{}, 1)
+				batteryAutoChargeState.WithLabelValues().Set(1)
+			} else {
+				_ = metrics.Metrics.Gauge("battery.autocharge.state", 0, []string{}, 1)
+				batteryAutoChargeState.WithLabelValues().Set(0)
+			}
+		}
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
+	accessories = append(accessories, ac.Accessory)
+	return accessories
+}
+
+func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, accessories []*accessory.Accessory) ([]*accessory.Accessory, automation.Automation) {
 	log.Printf("Initializing Generator.")
 	ac := accessory.NewSwitch(accessory.Info{
 		Name: thing.Label,
@@ -420,14 +519,20 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	startStopThing, ok := getThingFromChannels(channels, thing.UID, "command", c.habClient)
 	if !ok {
 		log.Printf("Unable to get switch for %s, skipping generator.", thing.UID)
-		return accessories
+		return accessories, automation.Automation{}
 	}
 	stateThing, ok := getThingFromChannels(channels, thing.UID, "state", c.habClient)
 	if !ok {
 		log.Printf("Unable to get current state for %s, skipping generator.", thing.UID)
-		return accessories
+		return accessories, automation.Automation{}
 	}
-	ac.Switch.On.OnValueRemoteUpdate(startStopThing.GetChangeFunction())
+	ac.Switch.On.OnValueRemoteUpdate(func(state bool) {
+		changeStateFunc := startStopThing.GetChangeFunction()
+		if !state {
+			time.Sleep(c.config.GeneratorOffDelay)
+		}
+		changeStateFunc(state)
+	})
 	if c.bmvClient != nil {
 		ac.AddBatteryLevel()
 	}
@@ -465,27 +570,31 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		}
 		if metrics.StatsEnabled {
 			_ = metrics.Metrics.Gauge("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
+			generatorStatus.WithLabelValues(thing.Label).Set(float64(c.getGeneratorStatusFromString(stateThing.State)))
 		}
 		lastValue = stateThing.State
 	}
 	syncFunc2()
+	var generatorAutomation automation.Automation
 	c.syncFuncs = append(c.syncFuncs, syncFunc2)
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation.AutomateGeneratorStart()
 		}
 	} else if c.mqttClient != nil {
 		mqttClient := *c.mqttClient
 		if mqttClient.IsEnabled() {
 			bmvClient := mqttClient.GetBatteryClient()
 			if config, ok := c.config.Automation["generator"]; ok {
-				automation.AutomateGeneratorStart(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+				generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+				generatorAutomation.AutomateGeneratorStart()
 			}
 		}
 	}
 	accessories = append(accessories, ac.Accessory)
-	return accessories
+	return accessories, generatorAutomation
 }
 
 func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name string, accessories []*accessory.Accessory) []*accessory.Accessory {
@@ -671,6 +780,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		} else {
 			if metrics.StatsEnabled {
 				_ = metrics.Metrics.Gauge("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+				hvacTemperature.WithLabelValues(metricName[0]).Set(currentTemp)
 			}
 			if units == 1 {
 				currentTemp = (currentTemp - 32) / 1.8
@@ -685,6 +795,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		currentStatus := c.getHVACStatusFromString(statusThing.State)
 		if metrics.StatsEnabled {
 			_ = metrics.Metrics.Gauge("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+			hvacCurrentStatus.WithLabelValues(metricName[0]).Set(float64(c.getHVACStatusNameFromString(statusThing.State)))
 		}
 		if currentHVACState != statusThing.State {
 			ac.Thermostat.CurrentHeatingCoolingState.SetValue(currentStatus)
@@ -692,6 +803,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		currentMode := getHVACModeFromString(modeThing.State)
 		if metrics.StatsEnabled {
 			_ = metrics.Metrics.Gauge("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+			hvacCurrentMode.WithLabelValues(metricName[0]).Set(float64(currentMode))
 		}
 		if currentHVACMode != modeThing.State {
 			ac.Thermostat.TargetHeatingCoolingState.SetValue(currentMode)

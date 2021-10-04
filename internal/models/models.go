@@ -22,6 +22,7 @@ type Config struct {
 	ThermostatRange       TemperatureRange      `json:"thermostatRange"`
 	TankSensors           MopkeaProCheck        `json:"tankSensors"`
 	SyncTimer             string                `json:"syncTimer"`
+	GeneratorOffDelay     time.Duration         `json:"generatorOffDelay"`
 }
 
 type MQTTConfiguration struct {
@@ -56,6 +57,7 @@ type MopkeaProCheck struct {
 	Enabled         bool                `json:"enabled"`
 	DefaultTankType string              `json:"defaultTankType"`
 	Devices         []MopekaLevelSensor `json:"devices"`
+	APIAddress      string              `json:"apiAddress"`
 }
 type MopekaLevelSensor struct {
 	Address    string  `json:"address"`
