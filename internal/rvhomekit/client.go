@@ -229,6 +229,7 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 		if mqttClient.IsEnabled() {
 			go func() {
 				for {
+					time.Sleep(time.Second * 10)
 					mqttClient.Connect()
 					log.Printf("Mqtt connection lost, reconnecting.")
 				}
@@ -580,7 +581,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 			generatorAutomation.AutomateGeneratorStart()
 		}
 	} else if c.mqttClient != nil {
@@ -588,7 +589,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 		if mqttClient.IsEnabled() {
 			bmvClient := mqttClient.GetBatteryClient()
 			if config, ok := c.config.Automation["generator"]; ok {
-				generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+				generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 				generatorAutomation.AutomateGeneratorStart()
 			}
 		}

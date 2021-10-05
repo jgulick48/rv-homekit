@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -16,10 +17,12 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
-func NewVeBusClient() Client {
+func NewVeBusClient(dvccConfig models.DVCCConfiguration, chargeCurrentFunc func(value float64)) Client {
 	client := Client{
-		values: map[string]vebusMetric{},
-		mux:    sync.RWMutex{},
+		values:            map[string]vebusMetric{},
+		mux:               sync.RWMutex{},
+		dvccConfig:        dvccConfig,
+		chargeCurrentFunc: chargeCurrentFunc,
 		automation: Automation{
 			HpDevices:             make(map[string]hpDevice, 0),
 			LastShutdownTime:      0,
@@ -62,9 +65,11 @@ type vebusMetric struct {
 }
 
 type Client struct {
-	mux        sync.RWMutex
-	values     map[string]vebusMetric
-	automation Automation
+	mux               sync.RWMutex
+	values            map[string]vebusMetric
+	automation        Automation
+	dvccConfig        models.DVCCConfiguration
+	chargeCurrentFunc func(value float64)
 }
 
 type Automation struct {
@@ -236,6 +241,14 @@ func (c *Client) checkForShutdown(segments []string, value float64) {
 }
 
 func (c *Client) shutdownHPDevices() {
+	//Name of topic for max charge current settings (N/d41243b4f71d/settings/0/Settings/SystemSetup/MaxChargeCurrent)
+	if c.dvccConfig.LowChargeCurrentMax == 0 {
+		log.Printf("Skipping config of max charge current due to value being %v", c.dvccConfig.LowChargeCurrentMax)
+	} else {
+		if c.chargeCurrentFunc != nil {
+			c.chargeCurrentFunc(c.dvccConfig.LowChargeCurrentMax)
+		}
+	}
 	for _, item := range c.automation.HpDevices {
 		item.item.GetCurrentValue()
 		item.State = item.item.State
@@ -252,4 +265,26 @@ func (c *Client) resetHPDevices() {
 			item.item.SetItemState(item.State)
 		}
 	}
+	go func() {
+		if c.dvccConfig.HighChargeCurrentMax == 0 {
+			return
+		}
+		time.Sleep(c.dvccConfig.StartDelay.Duration)
+		t := time.NewTicker(c.dvccConfig.StepTime.Duration)
+		steps := 1
+		if c.dvccConfig.Steps == 0 {
+			c.dvccConfig.Steps = 1
+		}
+		stepValue := math.Round((c.dvccConfig.HighChargeCurrentMax - c.dvccConfig.LowChargeCurrentMax) / float64(c.dvccConfig.Steps))
+		for range t.C {
+			log.Printf("Processing step %v of %v", steps, c.dvccConfig.Steps)
+			if steps >= c.dvccConfig.Steps {
+				c.chargeCurrentFunc(c.dvccConfig.HighChargeCurrentMax)
+				t.Stop()
+				return
+			}
+			c.chargeCurrentFunc(c.dvccConfig.LowChargeCurrentMax + (float64(steps) * stepValue))
+			steps++
+		}
+	}()
 }

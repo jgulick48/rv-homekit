@@ -12,6 +12,7 @@ type Config struct {
 	BridgeName            string                `json:"bridgeName"`
 	OpenHabServer         string                `json:"openHabServer"`
 	CrashOnDeviceMismatch bool                  `json:"crashOnDeviceMismatch"`
+	DVCCConfiguration     DVCCConfiguration     `json:"dvccConfiguration"`
 	Debug                 bool                  `json:"debug"`
 	MQTTConfiguration     MQTTConfiguration     `json:"mqttConfiguration"`
 	PIN                   string                `json:"pin"`
@@ -26,11 +27,20 @@ type Config struct {
 }
 
 type MQTTConfiguration struct {
+	UseVRM   bool   `json:"useVRM"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	DeviceID string `json:"deviceId"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type DVCCConfiguration struct {
+	HighChargeCurrentMax float64  `json:"highChargeCurrentMax"`
+	LowChargeCurrentMax  float64  `json:"lowChargeCurrentMax"`
+	Steps                int      `json:"steps"`
+	StartDelay           Duration `json:"startDelay"`
+	StepTime             Duration `json:"stepTime"`
 }
 
 type BMVConfig struct {
