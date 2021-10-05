@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"github.com/jgulick48/rv-homekit/internal/mqtt"
 	"log"
 	"sync"
 	"time"
@@ -11,7 +12,9 @@ import (
 
 type Automation struct {
 	parameters models.Automation
+	dvccConfig models.DVCCConfiguration
 	bmvClient  bmv.Client
+	mqttClient *mqtt.Client
 	switchFunc func(bool)
 	stateFunc  func() bool
 	state      State
@@ -22,7 +25,7 @@ type Automation struct {
 	stopTime   chan time.Time
 }
 
-func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, switchFunc func(bool), stateFunc func() bool) Automation {
+func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, mqttClient *mqtt.Client, dvccConfig models.DVCCConfiguration, switchFunc func(bool), stateFunc func() bool) Automation {
 	automationState := State{
 		LastStarted:         0,
 		LastStopped:         0,
@@ -32,7 +35,9 @@ func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Clien
 	return Automation{
 		state:      automationState,
 		parameters: parameters,
+		dvccConfig: dvccConfig,
 		bmvClient:  client,
+		mqttClient: mqttClient,
 		switchFunc: switchFunc,
 		stateFunc:  stateFunc,
 		mutex:      sync.Mutex{},
@@ -156,10 +161,23 @@ func (a *Automation) StopAutoCharge() {
 	if !a.stateFunc() {
 		log.Printf("Generator already off, skipping stop")
 	} else {
-		log.Printf("Generator on, stopping from manual automation cancel")
-		a.switchFunc(false)
-		a.state.LastStopped = time.Now().Unix()
-		a.stopTime <- time.Now()
+		if a.dvccConfig.LowChargeCurrentMax != 0 && a.mqttClient != nil {
+			mqttClient := *a.mqttClient
+			mqttClient.SetMaxChargeCurrent(a.dvccConfig.LowChargeCurrentMax)
+			log.Printf("Got signal to turn off. Setting DVCC max charge current to %v and waiting 30 seconds", a.dvccConfig.LowChargeCurrentMax)
+			go func() {
+				time.Sleep(time.Second * 30)
+				log.Printf("Generator on, stopping from manual automation cancel")
+				a.switchFunc(false)
+				a.state.LastStopped = time.Now().Unix()
+				a.stopTime <- time.Now()
+			}()
+		} else {
+			log.Printf("Generator on, stopping from manual automation cancel")
+			a.switchFunc(false)
+			a.state.LastStopped = time.Now().Unix()
+			a.stopTime <- time.Now()
+		}
 	}
 	a.state.AutomationTriggered = false
 	a.starter <- false

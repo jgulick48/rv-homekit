@@ -19,7 +19,7 @@ func (s *MQTTTest) SetupTest() {
 		Port:     1883,
 		DeviceID: "d41243b4f71d",
 	}
-	s.mqtt = NewClient(config, true)
+	s.mqtt = NewClient(config, models.DVCCConfiguration{}, false)
 }
 
 func (s *MQTTTest) Test_shouldShutOff_SOC() {
