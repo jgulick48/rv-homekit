@@ -46,11 +46,11 @@ func (c *client) GetItem(uid string) (EnrichedItemDTO, error) {
 		log.Printf("Error making request for item from OpenHAB: %s", err)
 		return EnrichedItemDTO{}, err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Invalid response from OpenHAB. Got %v expecting 200", resp.StatusCode)
 		return EnrichedItemDTO{}, err
 	}
-	defer resp.Body.Close()
 	var item EnrichedItemDTO
 	err = json.NewDecoder(resp.Body).Decode(&item)
 	if err != nil {

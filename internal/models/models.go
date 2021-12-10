@@ -23,7 +23,15 @@ type Config struct {
 	ThermostatRange       TemperatureRange      `json:"thermostatRange"`
 	TankSensors           MopkeaProCheck        `json:"tankSensors"`
 	SyncTimer             string                `json:"syncTimer"`
-	GeneratorOffDelay     time.Duration         `json:"generatorOffDelay"`
+	GeneratorOffDelay     Duration              `json:"generatorOffDelay"`
+	EVSEConfiguration     EVSEConfiguration     `json:"evseConfiguration"`
+}
+
+type EVSEConfiguration struct {
+	Enabled          bool   `json:"enabled"`
+	Address          string `json:"address"`
+	MaxChargeCurrent int    `json:"maxChargeCurrent"`
+	MinCurrentBuffer int    `json:"minCurrentBuffer"`
 }
 
 type MQTTConfiguration struct {

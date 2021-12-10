@@ -83,6 +83,34 @@ type hpDevice struct {
 	State string `json:"state"`
 }
 
+func (c *Client) GetAmperageOut() float64 {
+	maxOut := float64(0)
+	c.mux.RLock()
+	for _, value := range c.values {
+		if value.name == "ac_out_current" {
+			if value.value > maxOut {
+				maxOut = value.value
+			}
+		}
+	}
+	c.mux.RUnlock()
+	return maxOut
+}
+
+func (c *Client) GetCurrentLimit() float64 {
+	maxOut := float64(0)
+	c.mux.RLock()
+	for _, value := range c.values {
+		if value.name == "ac_in_current_limit" {
+			if value.value > maxOut {
+				maxOut = value.value
+			}
+		}
+	}
+	c.mux.RUnlock()
+	return maxOut
+}
+
 func (c *Client) LoadFromFile(filename string) {
 	if filename == "" {
 		filename = "./hpItems.json"
@@ -182,7 +210,8 @@ func (c *Client) ParseACData(segments []string, message models.Message) ([]strin
 		tags, metricName, shouldSend = c.parseACLineMeasurements(tags, segments)
 	case "Out":
 		tags, metricName, shouldSend = c.parseACLineMeasurements(tags, segments)
-
+	case "In":
+		tags, metricName, shouldSend = c.parseACLineMeasurements(tags, segments)
 	}
 	if metricName == "" || !shouldSend {
 		return []string{}, 0
@@ -212,6 +241,8 @@ func (c *Client) parseACLineMeasurements(tags []string, segments []string) ([]st
 		unit = "power"
 	case "V":
 		unit = "volts"
+	case "CurrentLimit":
+		unit = "current_limit"
 	}
 	if unit == "" {
 		return tags, "", false

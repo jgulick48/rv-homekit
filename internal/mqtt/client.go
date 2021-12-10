@@ -21,6 +21,7 @@ type Client interface {
 	Close()
 	Connect()
 	GetBatteryClient() bmv.Client
+	GetVEBusClient() vebus.Client
 	IsEnabled() bool
 	RegisterHPDevice(item *openHab.EnrichedItemDTO)
 	SetMaxChargeCurrent(value float64)
@@ -170,6 +171,10 @@ func (c *client) GetDataParser(segments []string) func(topic []string, message m
 
 func (c *client) GetBatteryClient() bmv.Client {
 	return c.battery
+}
+
+func (c *client) GetVEBusClient() vebus.Client {
+	return c.vebus
 }
 
 func DefaultParser(segments []string, message models.Message) ([]string, float64) {

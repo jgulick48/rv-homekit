@@ -14,7 +14,7 @@ type Automation struct {
 	parameters models.Automation
 	dvccConfig models.DVCCConfiguration
 	bmvClient  bmv.Client
-	mqttClient *mqtt.Client
+	mqttClient mqtt.Client
 	switchFunc func(bool)
 	stateFunc  func() bool
 	state      State
@@ -25,7 +25,7 @@ type Automation struct {
 	stopTime   chan time.Time
 }
 
-func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, mqttClient *mqtt.Client, dvccConfig models.DVCCConfiguration, switchFunc func(bool), stateFunc func() bool) Automation {
+func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, mqttClient mqtt.Client, dvccConfig models.DVCCConfiguration, switchFunc func(bool), stateFunc func() bool) Automation {
 	automationState := State{
 		LastStarted:         0,
 		LastStopped:         0,
@@ -161,9 +161,8 @@ func (a *Automation) StopAutoCharge() {
 	if !a.stateFunc() {
 		log.Printf("Generator already off, skipping stop")
 	} else {
-		if a.dvccConfig.LowChargeCurrentMax != 0 && a.mqttClient != nil {
-			mqttClient := *a.mqttClient
-			mqttClient.SetMaxChargeCurrent(a.dvccConfig.LowChargeCurrentMax)
+		if a.dvccConfig.LowChargeCurrentMax != 0 && a.mqttClient.IsEnabled() {
+			a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.LowChargeCurrentMax)
 			log.Printf("Got signal to turn off. Setting DVCC max charge current to %v and waiting 30 seconds", a.dvccConfig.LowChargeCurrentMax)
 			go func() {
 				time.Sleep(time.Second * 30)
@@ -171,6 +170,8 @@ func (a *Automation) StopAutoCharge() {
 				a.switchFunc(false)
 				a.state.LastStopped = time.Now().Unix()
 				a.stopTime <- time.Now()
+				time.Sleep(time.Second * 30)
+				a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.HighChargeCurrentMax)
 			}()
 		} else {
 			log.Printf("Generator on, stopping from manual automation cancel")

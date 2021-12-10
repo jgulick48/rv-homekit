@@ -27,7 +27,7 @@ type client struct {
 	habClient   openHab.Client
 	bmvClient   *bmv.Client
 	tankSensors tanksensors.Client
-	mqttClient  *mqtt.Client
+	mqttClient  mqtt.Client
 	syncFuncs   []func()
 }
 
@@ -66,7 +66,7 @@ func (c *client) SaveClientConfig(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient *mqtt.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient mqtt.Client) Client {
 	prometheus.MustRegister(
 		batteryAmpHours,
 		batteryAutoChargeStarted,
@@ -224,20 +224,15 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 	var bmvClient bmv.Client
 	if c.bmvClient != nil {
 		bmvClient = *c.bmvClient
-	} else if c.mqttClient != nil {
-		mqttClient := *c.mqttClient
-		if mqttClient.IsEnabled() {
-			go func() {
-				for {
-					time.Sleep(time.Second * 10)
-					mqttClient.Connect()
-					log.Printf("Mqtt connection lost, reconnecting.")
-				}
-			}()
-			bmvClient = mqttClient.GetBatteryClient()
-		} else {
-			return accessories, false
-		}
+	} else if c.mqttClient.IsEnabled() {
+		go func() {
+			for {
+				time.Sleep(time.Second * 10)
+				c.mqttClient.Connect()
+				log.Printf("Mqtt connection lost, reconnecting.")
+			}
+		}()
+		bmvClient = c.mqttClient.GetBatteryClient()
 	} else {
 		return accessories, false
 	}
@@ -530,7 +525,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	ac.Switch.On.OnValueRemoteUpdate(func(state bool) {
 		changeStateFunc := startStopThing.GetChangeFunction()
 		if !state {
-			time.Sleep(c.config.GeneratorOffDelay)
+			time.Sleep(c.config.GeneratorOffDelay.Duration)
 		}
 		changeStateFunc(state)
 	})
@@ -584,14 +579,11 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 			generatorAutomation.AutomateGeneratorStart()
 		}
-	} else if c.mqttClient != nil {
-		mqttClient := *c.mqttClient
-		if mqttClient.IsEnabled() {
-			bmvClient := mqttClient.GetBatteryClient()
-			if config, ok := c.config.Automation["generator"]; ok {
-				generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
-				generatorAutomation.AutomateGeneratorStart()
-			}
+	} else if c.mqttClient.IsEnabled() {
+		bmvClient := c.mqttClient.GetBatteryClient()
+		if config, ok := c.config.Automation["generator"]; ok {
+			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation.AutomateGeneratorStart()
 		}
 	}
 	accessories = append(accessories, ac.Accessory)
@@ -604,9 +596,8 @@ func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name st
 		ID:   id,
 	})
 	ac.Switch.On.OnValueRemoteUpdate(item.GetChangeFunction())
-	if name == "Electric Water Heater" && c.mqttClient != nil {
-		mqttClient := *c.mqttClient
-		mqttClient.RegisterHPDevice(&item)
+	if name == "Electric Water Heater" && c.mqttClient.IsEnabled() {
+		c.mqttClient.RegisterHPDevice(&item)
 	}
 	lastValue := ""
 	syncFunc := func() {
@@ -718,9 +709,8 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		log.Printf("Unable to get current mode for %s, skipping thermostat.", thing.UID)
 		return accessories
 	}
-	if c.mqttClient != nil {
-		mqttClient := *c.mqttClient
-		mqttClient.RegisterHPDevice(&modeThing)
+	if c.mqttClient.IsEnabled() {
+		c.mqttClient.RegisterHPDevice(&modeThing)
 	}
 	statusThing, ok := getThingFromChannels(channels, thing.UID, "status", c.habClient)
 	if !ok {

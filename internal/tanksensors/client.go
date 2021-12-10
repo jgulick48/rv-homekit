@@ -34,6 +34,10 @@ func (c *client) GetDevices() []Sensor {
 		return nil
 	}
 	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request to get sensors: %s", err.Error())
+		return nil
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		log.Printf("unexpected status code from server, %v", resp.StatusCode)

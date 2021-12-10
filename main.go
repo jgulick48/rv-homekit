@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/jgulick48/rv-homekit/internal/openevse"
 	"github.com/jgulick48/rv-homekit/internal/tanksensors"
 	"log"
 	"net/http"
@@ -81,7 +82,8 @@ func startService() {
 		tankSensors = tanksensors.NewTankSensorClient(config.TankSensors.APIAddress)
 	}
 	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.DVCCConfiguration, config.Debug)
-	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, &mqttClient)
+	openEVSEClient := openevse.NewClient(mqttClient.GetVEBusClient(), config.EVSEConfiguration, http.DefaultClient)
+	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, mqttClient)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
 	rvHomeKitClient.SaveClientConfig(*configLocation)
 	bridge := accessory.NewBridge(accessory.Info{
@@ -143,6 +145,7 @@ func startService() {
 	hc.OnTermination(func() {
 		<-t.Stop()
 		ticker.Stop()
+		openEVSEClient.Stop()
 		done <- true
 	})
 	t.Start()
