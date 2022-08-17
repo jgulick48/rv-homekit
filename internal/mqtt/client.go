@@ -41,13 +41,14 @@ func NewClient(config models.MQTTConfiguration, dvccConfig models.DVCCConfigurat
 	}
 	if config.Host != "" {
 		c := client{
-			config:     config,
-			dvccConfig: dvccConfig,
-			done:       make(chan bool),
-			messages:   make(chan mqtt.Message),
-			battery:    battery.NewBatteryClient(),
-			pv:         pv.NewPVClient(),
-			debug:      debug,
+			config:       config,
+			dvccConfig:   dvccConfig,
+			done:         make(chan bool),
+			messages:     make(chan mqtt.Message),
+			battery:      battery.NewBatteryClient(),
+			pv:           pv.NewPVClient(),
+			debug:        debug,
+			lastReceived: time.Now(),
 		}
 		c.vebus = vebus.NewVeBusClient(dvccConfig, c.SetMaxChargeCurrent)
 		return &c
@@ -56,16 +57,17 @@ func NewClient(config models.MQTTConfiguration, dvccConfig models.DVCCConfigurat
 }
 
 type client struct {
-	config     models.MQTTConfiguration
-	dvccConfig models.DVCCConfiguration
-	done       chan bool
-	mqttClient mqtt.Client
-	messages   chan mqtt.Message
-	battery    battery.Client
-	vebus      vebus.Client
-	pv         pv.Client
-	debug      bool
-	hasDVCC    bool
+	config       models.MQTTConfiguration
+	dvccConfig   models.DVCCConfiguration
+	done         chan bool
+	mqttClient   mqtt.Client
+	messages     chan mqtt.Message
+	battery      battery.Client
+	vebus        vebus.Client
+	pv           pv.Client
+	debug        bool
+	hasDVCC      bool
+	lastReceived time.Time
 }
 
 func (c *client) Close() {
@@ -113,6 +115,10 @@ func (c *client) keepAlive() {
 		case <-c.done:
 			return
 		case <-ticker.C:
+			if time.Now().Add(-1 * time.Minute).After(c.lastReceived) {
+				log.Printf("Metrics are getting stale, exiting connection.")
+				return
+			}
 			token := c.mqttClient.Publish(fmt.Sprintf("R/%s/keepalive", c.config.DeviceID), 0, false, "[\"#\"]")
 			token.Wait()
 		}
@@ -120,6 +126,7 @@ func (c *client) keepAlive() {
 }
 
 func (c *client) messagePubHandler(client mqtt.Client, msg mqtt.Message) {
+	c.lastReceived = time.Now()
 	c.messages <- msg
 }
 

@@ -66,13 +66,23 @@ func (a *Automation) AutomateGeneratorStart() {
 					a.mutex.Unlock()
 					continue
 				}
-				if state < a.parameters.LowValue {
+				voltageState, ok := a.bmvClient.GetBatteryVoltage()
+				if !ok {
+					a.mutex.Unlock()
+					continue
+				}
+				if state < a.parameters.LowValue || voltageState < a.parameters.MinVoltage {
 					if a.stateFunc() {
 						if !a.state.AutomationTriggered {
 							log.Printf("Generator already on, skipping start.")
 						}
 					} else {
-						log.Printf("State of charge below threshold of %v, starting generator.", a.parameters.LowValue)
+						if state < a.parameters.LowValue {
+							log.Printf("State of charge below threshold of %v, starting generator.", a.parameters.LowValue)
+						} else if voltageState < a.parameters.MinVoltage {
+
+							log.Printf("Voltage below threshold of %v, starting generator.", a.parameters.MinVoltage)
+						}
 						if a.parameters.CoolDown.Duration > 0 {
 							if time.Now().Before(time.Unix(a.state.LastStopped, 0).Add(a.parameters.CoolDown.Duration)) {
 								log.Printf("Cooldown has not yet finished, waiting until at least %v to start generator.", time.Unix(a.state.LastStopped, 0).Add(a.parameters.CoolDown.Duration))

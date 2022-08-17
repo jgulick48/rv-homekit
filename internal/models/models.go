@@ -60,6 +60,7 @@ type BMVConfig struct {
 type Automation struct {
 	HighValue        float64  `json:"highValue"`
 	LowValue         float64  `json:"lowValue"`
+	MinVoltage       float64  `json:"minVoltage"`
 	OffDelay         Duration `json:"offDelay"`
 	CoolDown         Duration `json:"coolDown"`
 	MinOn            Duration `json:"minOn"`

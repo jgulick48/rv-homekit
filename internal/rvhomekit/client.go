@@ -826,6 +826,10 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 			case 3:
 				ac.Thermostat.CoolingThresholdTemperature.SetValue(highTemp)
 				ac.Thermostat.HeatingThresholdTemperature.SetValue(lowTemp)
+			default:
+				if currentHighTempState != highTempThing.State {
+					ac.Thermostat.TargetTemperature.SetValue(highTemp)
+				}
 			}
 		}
 

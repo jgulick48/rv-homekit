@@ -28,50 +28,50 @@ func (c Client) Close() {
 
 func (c Client) GetBatteryStateOfCharge() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_stateofcharge"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetBatteryCurrent() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_current"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetBatteryVoltage() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_volts"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetConsumedAmpHours() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_ampHours"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetBatteryTemperature() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_degrees"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetPower() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_watts"]
-	c.mux.RUnlock()
 	return value, ok
 }
 
 func (c Client) GetTimeToGo() (float64, bool) {
 	c.mux.RLock()
+	defer c.mux.RUnlock()
 	value, ok := c.values["battery_secondsRemaining"]
-	c.mux.RUnlock()
 	return value, ok
 }
 func (c Client) GetChargeTimeRemaining() (float64, bool) {
@@ -115,8 +115,8 @@ func (c Client) ParseDCData(segments []string, message models.Message) ([]string
 		return []string{}, 0
 	}
 	c.mux.Lock()
+	defer c.mux.Unlock()
 	c.values[metricName] = message.Value.Float64
-	c.mux.Unlock()
 	return append([]string{metricName}, tags...), message.Value.Float64
 }
 
