@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/DataDog/datadog-go/statsd"
+	"github.com/DataDog/datadog-go/v5/statsd"
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
 	"github.com/mitchellh/panicwrap"
