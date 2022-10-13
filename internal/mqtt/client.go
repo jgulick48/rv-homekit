@@ -25,9 +25,10 @@ type Client interface {
 	IsEnabled() bool
 	RegisterHPDevice(item *openHab.EnrichedItemDTO)
 	SetMaxChargeCurrent(value float64)
+	SetMaxInputCurrent(value float64)
 }
 
-func NewClient(config models.MQTTConfiguration, dvccConfig models.DVCCConfiguration, debug bool) Client {
+func NewClient(config models.MQTTConfiguration, dvccConfig models.CurrentLimitConfiguration, inputConfig models.CurrentLimitConfiguration, debug bool) Client {
 	if config.UseVRM {
 		if config.DeviceID != "" {
 			sum := 0
@@ -50,7 +51,7 @@ func NewClient(config models.MQTTConfiguration, dvccConfig models.DVCCConfigurat
 			debug:        debug,
 			lastReceived: time.Now(),
 		}
-		c.vebus = vebus.NewVeBusClient(dvccConfig, c.SetMaxChargeCurrent)
+		c.vebus = vebus.NewVeBusClient(dvccConfig, inputConfig, c.SetMaxChargeCurrent, c.SetMaxInputCurrent)
 		return &c
 	}
 	return &client{config: config}
@@ -58,7 +59,7 @@ func NewClient(config models.MQTTConfiguration, dvccConfig models.DVCCConfigurat
 
 type client struct {
 	config       models.MQTTConfiguration
-	dvccConfig   models.DVCCConfiguration
+	dvccConfig   models.CurrentLimitConfiguration
 	done         chan bool
 	mqttClient   mqtt.Client
 	messages     chan mqtt.Message
@@ -214,6 +215,25 @@ func (c *client) SetMaxChargeCurrent(value float64) {
 		go c.mqttClient.Connect()
 	}
 	token := c.mqttClient.Publish(fmt.Sprintf("W/%s/settings/0/Settings/SystemSetup/MaxChargeCurrent", c.config.DeviceID), 0, false, fmt.Sprintf("{\"value\": %v}", value))
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("Error setting mach charge current %s", token.Error())
+	}
+}
+func (c *client) SetMaxInputCurrent(value float64) {
+	//Name of topic for max charge current settings (N/d41243b4f71d/vebus/276/Ac/ActiveIn/CurrentLimit)
+	if !c.hasDVCC {
+		log.Printf("System not configured for DVCC skipping max current setting")
+		return
+	}
+	if value < 0 {
+		return
+	}
+	log.Printf("Setting max charge current to %v", value)
+	if !c.mqttClient.IsConnected() {
+		go c.mqttClient.Connect()
+	}
+	token := c.mqttClient.Publish(fmt.Sprintf("W/%s/vebus/276/Ac/ActiveIn/CurrentLimit", c.config.DeviceID), 0, false, fmt.Sprintf("{\"value\": %v}", value))
 	token.Wait()
 	if token.Error() != nil {
 		log.Printf("Error setting mach charge current %s", token.Error())

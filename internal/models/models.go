@@ -9,22 +9,23 @@ import (
 )
 
 type Config struct {
-	BridgeName            string                `json:"bridgeName"`
-	OpenHabServer         string                `json:"openHabServer"`
-	CrashOnDeviceMismatch bool                  `json:"crashOnDeviceMismatch"`
-	DVCCConfiguration     DVCCConfiguration     `json:"dvccConfiguration"`
-	Debug                 bool                  `json:"debug"`
-	MQTTConfiguration     MQTTConfiguration     `json:"mqttConfiguration"`
-	PIN                   string                `json:"pin"`
-	Port                  string                `json:"port"`
-	BMVConfig             BMVConfig             `json:"bmvConfig"`
-	Automation            map[string]Automation `json:"automation"`
-	StatsServer           string                `json:"statsServer"`
-	ThermostatRange       TemperatureRange      `json:"thermostatRange"`
-	TankSensors           MopkeaProCheck        `json:"tankSensors"`
-	SyncTimer             string                `json:"syncTimer"`
-	GeneratorOffDelay     Duration              `json:"generatorOffDelay"`
-	EVSEConfiguration     EVSEConfiguration     `json:"evseConfiguration"`
+	BridgeName              string                    `json:"bridgeName"`
+	OpenHabServer           string                    `json:"openHabServer"`
+	CrashOnDeviceMismatch   bool                      `json:"crashOnDeviceMismatch"`
+	DVCCConfiguration       CurrentLimitConfiguration `json:"dvccConfiguration"`
+	InputLimitConfiguration CurrentLimitConfiguration `json:"inputLimitConfiguration"`
+	Debug                   bool                      `json:"debug"`
+	MQTTConfiguration       MQTTConfiguration         `json:"mqttConfiguration"`
+	PIN                     string                    `json:"pin"`
+	Port                    string                    `json:"port"`
+	BMVConfig               BMVConfig                 `json:"bmvConfig"`
+	Automation              map[string]Automation     `json:"automation"`
+	StatsServer             string                    `json:"statsServer"`
+	ThermostatRange         TemperatureRange          `json:"thermostatRange"`
+	TankSensors             MopkeaProCheck            `json:"tankSensors"`
+	SyncTimer               string                    `json:"syncTimer"`
+	GeneratorOffDelay       Duration                  `json:"generatorOffDelay"`
+	EVSEConfiguration       EVSEConfiguration         `json:"evseConfiguration"`
 }
 
 type EVSEConfiguration struct {
@@ -43,12 +44,12 @@ type MQTTConfiguration struct {
 	Password string `json:"password"`
 }
 
-type DVCCConfiguration struct {
-	HighChargeCurrentMax float64  `json:"highChargeCurrentMax"`
-	LowChargeCurrentMax  float64  `json:"lowChargeCurrentMax"`
-	Steps                int      `json:"steps"`
-	StartDelay           Duration `json:"startDelay"`
-	StepTime             Duration `json:"stepTime"`
+type CurrentLimitConfiguration struct {
+	HighCurrentMax float64  `json:"highChargeCurrentMax"`
+	LowCurrentMax  float64  `json:"lowChargeCurrentMax"`
+	Steps          int      `json:"steps"`
+	StartDelay     Duration `json:"startDelay"`
+	StepTime       Duration `json:"stepTime"`
 }
 
 type BMVConfig struct {

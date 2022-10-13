@@ -11,21 +11,22 @@ import (
 )
 
 type Automation struct {
-	parameters models.Automation
-	dvccConfig models.DVCCConfiguration
-	bmvClient  bmv.Client
-	mqttClient mqtt.Client
-	switchFunc func(bool)
-	stateFunc  func() bool
-	state      State
-	isEnabled  bool
-	mutex      sync.Mutex
-	starter    chan bool
-	startTime  chan time.Time
-	stopTime   chan time.Time
+	parameters   models.Automation
+	dvccConfig   models.CurrentLimitConfiguration
+	limitsConfig models.CurrentLimitConfiguration
+	bmvClient    bmv.Client
+	mqttClient   mqtt.Client
+	switchFunc   func(bool)
+	stateFunc    func() bool
+	state        State
+	isEnabled    bool
+	mutex        sync.Mutex
+	starter      chan bool
+	startTime    chan time.Time
+	stopTime     chan time.Time
 }
 
-func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, mqttClient mqtt.Client, dvccConfig models.DVCCConfiguration, switchFunc func(bool), stateFunc func() bool) Automation {
+func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Client, mqttClient mqtt.Client, dvccConfig models.CurrentLimitConfiguration, limitsConfig models.CurrentLimitConfiguration, switchFunc func(bool), stateFunc func() bool) Automation {
 	automationState := State{
 		LastStarted:         0,
 		LastStopped:         0,
@@ -33,17 +34,18 @@ func NewGeneratorAutomationClient(parameters models.Automation, client bmv.Clien
 	}
 	automationState.LoadFromFile("")
 	return Automation{
-		state:      automationState,
-		parameters: parameters,
-		dvccConfig: dvccConfig,
-		bmvClient:  client,
-		mqttClient: mqttClient,
-		switchFunc: switchFunc,
-		stateFunc:  stateFunc,
-		mutex:      sync.Mutex{},
-		starter:    make(chan bool),
-		startTime:  make(chan time.Time),
-		stopTime:   make(chan time.Time),
+		state:        automationState,
+		parameters:   parameters,
+		dvccConfig:   dvccConfig,
+		limitsConfig: limitsConfig,
+		bmvClient:    client,
+		mqttClient:   mqttClient,
+		switchFunc:   switchFunc,
+		stateFunc:    stateFunc,
+		mutex:        sync.Mutex{},
+		starter:      make(chan bool),
+		startTime:    make(chan time.Time),
+		stopTime:     make(chan time.Time),
 	}
 }
 
@@ -136,7 +138,7 @@ func shouldShutOff(params models.Automation, startTime time.Time, client bmv.Cli
 		log.Print("Unable to get battery current, signaling generator to shut off.")
 		return true
 	}
-	if chargeCurrent < params.MinChargeCurrent {
+	if chargeCurrent > 0 && chargeCurrent < params.MinChargeCurrent {
 		log.Printf("Battery current is now at %v which is lower than %v, signaling generator to shut off.", chargeCurrent, params.MinChargeCurrent)
 		return true
 	}
@@ -171,9 +173,10 @@ func (a *Automation) StopAutoCharge() {
 	if !a.stateFunc() {
 		log.Printf("Generator already off, skipping stop")
 	} else {
-		if a.dvccConfig.LowChargeCurrentMax != 0 && a.mqttClient.IsEnabled() {
-			a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.LowChargeCurrentMax)
-			log.Printf("Got signal to turn off. Setting DVCC max charge current to %v and waiting 30 seconds", a.dvccConfig.LowChargeCurrentMax)
+		if a.dvccConfig.LowCurrentMax != 0 && a.mqttClient.IsEnabled() {
+			a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.LowCurrentMax)
+			a.mqttClient.SetMaxInputCurrent(a.limitsConfig.LowCurrentMax)
+			log.Printf("Got signal to turn off. Setting DVCC max charge current to %v and waiting 30 seconds", a.dvccConfig.LowCurrentMax)
 			go func() {
 				time.Sleep(time.Second * 30)
 				log.Printf("Generator on, stopping from manual automation cancel")
@@ -181,7 +184,8 @@ func (a *Automation) StopAutoCharge() {
 				a.state.LastStopped = time.Now().Unix()
 				a.stopTime <- time.Now()
 				time.Sleep(time.Second * 30)
-				a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.HighChargeCurrentMax)
+				a.mqttClient.SetMaxChargeCurrent(a.dvccConfig.HighCurrentMax)
+				a.mqttClient.SetMaxInputCurrent(a.limitsConfig.HighCurrentMax)
 			}()
 		} else {
 			log.Printf("Generator on, stopping from manual automation cancel")

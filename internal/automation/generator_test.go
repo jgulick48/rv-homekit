@@ -47,7 +47,7 @@ func (s *GeneratorTest) Test_shouldShutOff_MaxOn() {
 
 func (s *GeneratorTest) Test_shouldShutOff_MinCurrent() {
 	s.bmvClient.On("GetBatteryStateOfCharge").Return(97.1, true).Once()
-	s.bmvClient.On("GetBatteryCurrent").Return(-2.1, true).Once()
+	s.bmvClient.On("GetBatteryCurrent").Return(0.9, true).Once()
 	turnOff := shouldShutOff(paramaters, time.Now().Add(time.Hour*-2), s.bmvClient)
 	s.Assert().True(turnOff)
 }

@@ -157,6 +157,7 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 				itemIDs[thing.UID] = id
 			}
 			accessories = c.registerThermostat(id, thing, accessories)
+			fmt.Printf("Found %s : %s\n", thing.Label, thing.UID)
 
 			continue
 		}
@@ -169,6 +170,7 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 			}
 			var generatorAutomation automation.Automation
 			accessories, generatorAutomation = c.registerGenerator(id, thing, accessories)
+			fmt.Printf("Found %s : %s\n", thing.Label, thing.UID)
 			if generatorAutomation.IsEnabled() {
 				id, ok := itemIDs["BatteryAutoCharge"]
 				if !ok {
@@ -195,6 +197,7 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 					itemIDs[channel.UID] = id
 				}
 				accessories = registrationMethod(id, item, thing.Label, accessories)
+				fmt.Printf("Found %s : %s\n", thing.Label, thing.UID)
 				if channel.ChannelTypeUID == "idsmyrv:hsvcolor" {
 					break
 				}
@@ -211,7 +214,10 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 		}
 	}
 	if c.config.CrashOnDeviceMismatch && len(accessories) != (len(itemIDs)+foundTankSensors) {
-		log.Fatalf("Found %v items expected to find %v exiting due to config.", len(accessories), len(itemIDs))
+		for _, i := range accessories {
+			log.Printf("%s, %v", i.Info.Name.GetValue(), i.ID)
+		}
+		log.Fatalf("Found %v items expected to find %v exiting due to config. Expected:\n%s", len(accessories), len(itemIDs), itemConfigFile)
 	}
 	return accessories
 }
@@ -576,13 +582,13 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 	if c.bmvClient != nil {
 		bmvClient := *c.bmvClient
 		if config, ok := c.config.Automation["generator"]; ok {
-			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, c.config.InputLimitConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 			generatorAutomation.AutomateGeneratorStart()
 		}
 	} else if c.mqttClient.IsEnabled() {
 		bmvClient := c.mqttClient.GetBatteryClient()
 		if config, ok := c.config.Automation["generator"]; ok {
-			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
+			generatorAutomation = automation.NewGeneratorAutomationClient(config, bmvClient, c.mqttClient, c.config.DVCCConfiguration, c.config.InputLimitConfiguration, startStopThing.GetChangeFunction(), stateThing.GetCurrentState)
 			generatorAutomation.AutomateGeneratorStart()
 		}
 	}
