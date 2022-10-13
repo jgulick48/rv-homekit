@@ -17,12 +17,14 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
-func NewVeBusClient(dvccConfig models.DVCCConfiguration, chargeCurrentFunc func(value float64)) Client {
+func NewVeBusClient(dvccConfig models.CurrentLimitConfiguration, inputLimits models.CurrentLimitConfiguration, chargeCurrentFunc func(value float64), inputCurrentFunc func(value float64)) Client {
 	client := Client{
 		values:            map[string]vebusMetric{},
 		mux:               sync.RWMutex{},
 		dvccConfig:        dvccConfig,
+		inputLimits:       inputLimits,
 		chargeCurrentFunc: chargeCurrentFunc,
+		inputCurrentFunc:  inputCurrentFunc,
 		automation: Automation{
 			HpDevices:             make(map[string]hpDevice, 0),
 			LastShutdownTime:      0,
@@ -68,8 +70,10 @@ type Client struct {
 	mux               sync.RWMutex
 	values            map[string]vebusMetric
 	automation        Automation
-	dvccConfig        models.DVCCConfiguration
+	dvccConfig        models.CurrentLimitConfiguration
+	inputLimits       models.CurrentLimitConfiguration
 	chargeCurrentFunc func(value float64)
+	inputCurrentFunc  func(value float64)
 }
 
 type Automation struct {
@@ -273,11 +277,18 @@ func (c *Client) checkForShutdown(segments []string, value float64) {
 
 func (c *Client) shutdownHPDevices() {
 	//Name of topic for max charge current settings (N/d41243b4f71d/settings/0/Settings/SystemSetup/MaxChargeCurrent)
-	if c.dvccConfig.LowChargeCurrentMax == 0 {
-		log.Printf("Skipping config of max charge current due to value being %v", c.dvccConfig.LowChargeCurrentMax)
+	if c.dvccConfig.LowCurrentMax == 0 {
+		log.Printf("Skipping config of max charge current due to value being %v", c.dvccConfig.LowCurrentMax)
 	} else {
 		if c.chargeCurrentFunc != nil {
-			c.chargeCurrentFunc(c.dvccConfig.LowChargeCurrentMax)
+			c.chargeCurrentFunc(c.dvccConfig.LowCurrentMax)
+		}
+	}
+	if c.inputLimits.LowCurrentMax == 0 {
+		log.Printf("Skipping config of max input current due to value being %v", c.dvccConfig.LowCurrentMax)
+	} else {
+		if c.inputCurrentFunc != nil {
+			c.inputCurrentFunc(c.inputLimits.LowCurrentMax)
 		}
 	}
 	for _, item := range c.automation.HpDevices {
@@ -296,26 +307,46 @@ func (c *Client) resetHPDevices() {
 			item.item.SetItemState(item.State)
 		}
 	}
-	go func() {
-		if c.dvccConfig.HighChargeCurrentMax == 0 {
-			return
-		}
-		time.Sleep(c.dvccConfig.StartDelay.Duration)
-		t := time.NewTicker(c.dvccConfig.StepTime.Duration)
-		steps := 1
-		if c.dvccConfig.Steps == 0 {
-			c.dvccConfig.Steps = 1
-		}
-		stepValue := math.Round((c.dvccConfig.HighChargeCurrentMax - c.dvccConfig.LowChargeCurrentMax) / float64(c.dvccConfig.Steps))
-		for range t.C {
-			log.Printf("Processing step %v of %v", steps, c.dvccConfig.Steps)
-			if steps >= c.dvccConfig.Steps {
-				c.chargeCurrentFunc(c.dvccConfig.HighChargeCurrentMax)
-				t.Stop()
-				return
+	if c.dvccConfig.HighCurrentMax != 0 {
+		go func() {
+			time.Sleep(c.dvccConfig.StartDelay.Duration)
+			t := time.NewTicker(c.dvccConfig.StepTime.Duration)
+			steps := 1
+			if c.dvccConfig.Steps == 0 {
+				c.dvccConfig.Steps = 1
 			}
-			c.chargeCurrentFunc(c.dvccConfig.LowChargeCurrentMax + (float64(steps) * stepValue))
-			steps++
-		}
-	}()
+			stepValue := math.Round((c.dvccConfig.HighCurrentMax - c.dvccConfig.LowCurrentMax) / float64(c.dvccConfig.Steps))
+			for range t.C {
+				log.Printf("Processing step %v of %v", steps, c.dvccConfig.Steps)
+				if steps >= c.dvccConfig.Steps {
+					c.chargeCurrentFunc(c.dvccConfig.HighCurrentMax)
+					t.Stop()
+					return
+				}
+				c.chargeCurrentFunc(c.dvccConfig.LowCurrentMax + (float64(steps) * stepValue))
+				steps++
+			}
+		}()
+	}
+	if c.inputLimits.HighCurrentMax != 0 {
+		go func() {
+			time.Sleep(c.inputLimits.StartDelay.Duration)
+			t := time.NewTicker(c.inputLimits.StepTime.Duration)
+			steps := 1
+			if c.inputLimits.Steps == 0 {
+				c.inputLimits.Steps = 1
+			}
+			stepValue := math.Round((c.inputLimits.HighCurrentMax - c.inputLimits.LowCurrentMax) / float64(c.inputLimits.Steps))
+			for range t.C {
+				log.Printf("Processing step %v of %v", steps, c.inputLimits.Steps)
+				if steps >= c.inputLimits.Steps {
+					c.inputCurrentFunc(c.inputLimits.HighCurrentMax)
+					t.Stop()
+					return
+				}
+				c.inputCurrentFunc(c.inputLimits.LowCurrentMax + (float64(steps) * stepValue))
+				steps++
+			}
+		}()
+	}
 }

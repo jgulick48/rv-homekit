@@ -81,7 +81,7 @@ func startService() {
 	if config.TankSensors.Enabled {
 		tankSensors = tanksensors.NewTankSensorClient(config.TankSensors.APIAddress)
 	}
-	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.DVCCConfiguration, config.Debug)
+	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.DVCCConfiguration, config.InputLimitConfiguration, config.Debug)
 	openEVSEClient := openevse.NewClient(mqttClient.GetVEBusClient(), config.EVSEConfiguration, http.DefaultClient)
 	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, mqttClient)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
