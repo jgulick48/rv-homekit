@@ -153,6 +153,25 @@ func changeItemValue(link string, value string) {
 	log.Printf("Successfully changed state for %s to %s", link, value)
 }
 
+func (i *EnrichedItemDTO) GetState() (string, error) {
+	i.GetCurrentState()
+	return i.State, nil
+}
+
+func (i *EnrichedItemDTO) SetState(state string) {
+	i.SetItemState(state)
+}
+
+func (i *EnrichedItemDTO) InHPState() bool {
+	i.GetCurrentValue()
+	if i.State == "HEAT" {
+		if source, ok := i.getCurrentSource(); ok && source == "GAS" {
+			return false
+		}
+	}
+	return true
+}
+
 func (i *EnrichedItemDTO) GetCurrentValue() {
 	httpClient := http.DefaultClient
 	req, err := http.NewRequest(http.MethodGet, i.Link, nil)
@@ -175,6 +194,35 @@ func (i *EnrichedItemDTO) GetCurrentValue() {
 		log.Printf("Error getting latest values: %s", err)
 		return
 	}
+}
+func (i *EnrichedItemDTO) getCurrentSource() (string, bool) {
+	if i.Label != "HVAC Mode" {
+		return "", false
+	}
+	httpClient := http.DefaultClient
+	link := strings.Replace(i.Link, "hvac_mode", "heat_source", 1)
+	req, err := http.NewRequest(http.MethodGet, link, nil)
+	if err != nil {
+		log.Printf("Error creating request for things from OpenHAB: %s", err)
+		return "", false
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request for things from OpenHAB: %s", err)
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Invalid response from OpenHAB. Got %v expecting 202", resp.StatusCode)
+		return "", false
+	}
+	var heatSource EnrichedItemDTO
+	err = json.NewDecoder(resp.Body).Decode(&heatSource)
+	if err != nil {
+		log.Printf("Error getting latest values: %s", err)
+		return "", false
+	}
+	return heatSource.State, true
 }
 
 func (i *EnrichedItemDTO) SetItemState(value string) {

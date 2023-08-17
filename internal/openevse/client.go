@@ -1,7 +1,9 @@
 package openevse
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
@@ -19,6 +21,28 @@ type Client struct {
 	httpClient    *http.Client
 	config        models.EVSEConfiguration
 	done          chan bool
+}
+
+func (c *Client) GetState() (string, error) {
+	isEnabled, err := c.IsEnabled()
+	if isEnabled {
+		return "ON", err
+	}
+	return "OFF", err
+}
+
+func (c *Client) SetState(state string) {
+	switch state {
+	case "ON":
+		c.Enable(true)
+	case "OFF":
+		c.Enable(false)
+	}
+	return
+}
+
+func (c *Client) InHPState() bool {
+	return true
 }
 
 func NewClient(veClient vebus.Client, config models.EVSEConfiguration, httpClient *http.Client) Client {
@@ -53,6 +77,28 @@ func (c *Client) Stop() {
 	c.done <- true
 }
 
+func (c *Client) IsEnabled() (bool, error) {
+	statusMap, err := c.getStatus()
+	if err != nil {
+		return false, err
+	}
+	status, ok := statusMap["status"]
+	if !ok {
+		return false, errors.New("status was not included in message")
+	}
+	isEnabled := status == "active"
+	return isEnabled, nil
+}
+
+func (c *Client) Enable(shouldEnable bool) {
+	isEnabled, _ := c.IsEnabled()
+	if shouldEnable && !isEnabled {
+		c.deleteOverride()
+	} else if !shouldEnable && isEnabled {
+		c.setOverride()
+	}
+}
+
 func (c *Client) GetChargeLimitSetting() (int, error) {
 	rapi := "$GE"
 	result, err := c.processGetRequest(rapi)
@@ -84,6 +130,49 @@ func (c *Client) SetChargeLimitSetting(limit int) {
 	if retMessage[0] == "$OK" {
 		log.Printf("Updated charging limit with result %s", result.RET)
 	}
+}
+
+func (c *Client) setOverride() error {
+	body := bytes.NewBuffer([]byte("{state: \"disabled\"}"))
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/override", c.config.Address), body)
+	var response OverrideResult
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request for item from openEVSE: %s", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Invalid response from openEVSE. Got %v expecting 200", resp.StatusCode)
+		return err
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		log.Printf("Unable to decod message from openEVSE: %s", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Client) deleteOverride() error {
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/override", c.config.Address), nil)
+	var response OverrideResult
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request for item from openEVSE: %s", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Invalid response from openEVSE. Got %v expecting 200", resp.StatusCode)
+		return err
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		log.Printf("Unable to decod message from openEVSE: %s", err)
+		return err
+	}
+	return nil
 }
 
 func (c *Client) processGetRequest(rapi string) (CommandResult, error) {

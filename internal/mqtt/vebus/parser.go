@@ -14,7 +14,6 @@ import (
 
 	"github.com/jgulick48/rv-homekit/internal/metrics"
 	"github.com/jgulick48/rv-homekit/internal/models"
-	"github.com/jgulick48/rv-homekit/internal/openHab"
 )
 
 func NewVeBusClient(dvccConfig models.CurrentLimitConfiguration, inputLimits models.CurrentLimitConfiguration, chargeCurrentFunc func(value float64), inputCurrentFunc func(value float64)) Client {
@@ -82,9 +81,16 @@ type Automation struct {
 	ShutdownDueToPowerOut bool                `json:"ShutdownDueToPowerOut"`
 }
 
+type HPDevice interface {
+	GetState() (string, error)
+	SetState(state string)
+	InHPState() bool
+}
+
 type hpDevice struct {
-	item  openHab.EnrichedItemDTO
-	State string `json:"state"`
+	HPDevice `json:"-"`
+	Name     string `json:"name"`
+	State    string `json:"state"`
 }
 
 func (c *Client) GetAmperageOut() float64 {
@@ -140,17 +146,21 @@ func (c *Client) SaveToFile(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func (c *Client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
-	device, ok := c.automation.HpDevices[item.Name]
+func (c *Client) RegisterHPDevice(id, name string, item HPDevice) {
+	device, ok := c.automation.HpDevices[id]
 	if !ok {
-		c.automation.HpDevices[item.Name] = hpDevice{
-			item:  *item,
-			State: item.State,
+		enabled, _ := item.GetState()
+		c.automation.HpDevices[id] = hpDevice{
+			Name:     name,
+			HPDevice: item,
+			State:    enabled,
 		}
 	} else {
-		device.item = *item
-		c.automation.HpDevices[item.Name] = device
+		device.HPDevice = item
+		device.Name = name
+		c.automation.HpDevices[id] = device
 	}
+	c.SaveToFile("")
 }
 
 func (c *Client) GetDataParser(segments []string, defaultParser func(topic []string, message models.Message) ([]string, float64)) func(topic []string, message models.Message) ([]string, float64) {
@@ -291,20 +301,29 @@ func (c *Client) shutdownHPDevices() {
 			c.inputCurrentFunc(c.inputLimits.LowCurrentMax)
 		}
 	}
-	for _, item := range c.automation.HpDevices {
-		item.item.GetCurrentValue()
-		item.State = item.item.State
-		log.Printf("Setting item %s to OFF from %s due to power failure.", item.item.Name, item.item.State)
-		item.item.SetItemState("OFF")
+	for id, item := range c.automation.HpDevices {
+		log.Printf("Checking %s to see if shutdown is needed due to power failure.\n", id)
+		if !item.InHPState() {
+			log.Printf("Item %s is not in high power state, not changing status", id)
+			continue
+		}
+		isEnabled, err := item.GetState()
+		if err != nil {
+			fmt.Errorf("failed to get status from item %s due to error: %s", id, err.Error())
+			continue
+		}
+		item.State = isEnabled
+		log.Printf("Setting item %s enabled to false from %v due to power failure.", id, isEnabled)
+		item.SetState("OFF")
 	}
 	c.SaveToFile("")
 }
 
 func (c *Client) resetHPDevices() {
-	for _, item := range c.automation.HpDevices {
+	for id, item := range c.automation.HpDevices {
 		if item.State != "OFF" {
-			log.Printf("Setting item %s to %s from OFF due to power restoration.", item.item.Name, item.item.State)
-			item.item.SetItemState(item.State)
+			log.Printf("Setting item %s enabled to %v from False due to power restoration.", id, item.State)
+			item.SetState(item.State)
 		}
 	}
 	if c.dvccConfig.HighCurrentMax != 0 {

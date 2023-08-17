@@ -4,7 +4,6 @@ go 1.19
 
 require (
 	github.com/DataDog/datadog-go v4.8.3+incompatible
-	github.com/DataDog/datadog-go/v5 v5.1.1
 	github.com/eclipse/paho.mqtt.golang v1.4.1
 	github.com/guregu/null v4.0.0+incompatible
 	github.com/jgulick48/hc v1.2.6-rc1.4.4
