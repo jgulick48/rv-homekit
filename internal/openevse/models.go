@@ -11,3 +11,7 @@ type StatusResult struct {
 	Wattsec  int64  `json:"wattsec"`
 	Status   string `json:"status"`
 }
+
+type OverrideResult struct {
+	Msg string `json:"msg"`
+}

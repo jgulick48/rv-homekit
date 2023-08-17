@@ -82,7 +82,7 @@ func (c *Client) sendAllMetrics() {
 		c.mux.RUnlock()
 	}
 }
-
+-
 type Client struct {
 	mux    sync.RWMutex
 	values map[string]pvMetric

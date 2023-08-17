@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/DataDog/datadog-go/v5/statsd"
+	"github.com/DataDog/datadog-go/statsd"
 	"github.com/jgulick48/hc"
 	"github.com/jgulick48/hc/accessory"
 	"github.com/mitchellh/panicwrap"
@@ -83,7 +83,7 @@ func startService() {
 	}
 	mqttClient := mqtt.NewClient(config.MQTTConfiguration, config.DVCCConfiguration, config.InputLimitConfiguration, config.Debug)
 	openEVSEClient := openevse.NewClient(mqttClient.GetVEBusClient(), config.EVSEConfiguration, http.DefaultClient)
-	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, mqttClient)
+	rvHomeKitClient := rvhomekit.NewClient(config, habClient, bmvClient, tankSensors, mqttClient, &openEVSEClient)
 	accessories := rvHomeKitClient.GetAccessoriesFromOpenHab(things)
 	rvHomeKitClient.SaveClientConfig(*configLocation)
 	bridge := accessory.NewBridge(accessory.Info{

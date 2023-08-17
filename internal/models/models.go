@@ -77,6 +77,7 @@ type TemperatureRange struct {
 
 type MopkeaProCheck struct {
 	Enabled         bool                `json:"enabled"`
+	RegisterNew     bool                `json:"registerNew"`
 	DefaultTankType string              `json:"defaultTankType"`
 	Devices         []MopekaLevelSensor `json:"devices"`
 	APIAddress      string              `json:"apiAddress"`

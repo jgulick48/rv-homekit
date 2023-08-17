@@ -3,6 +3,7 @@ package rvhomekit
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jgulick48/rv-homekit/internal/openevse"
 	"github.com/jgulick48/rv-homekit/internal/tanksensors"
 	"io/ioutil"
 	"log"
@@ -28,6 +29,7 @@ type client struct {
 	bmvClient   *bmv.Client
 	tankSensors tanksensors.Client
 	mqttClient  mqtt.Client
+	evseClient  *openevse.Client
 	syncFuncs   []func()
 }
 
@@ -66,7 +68,7 @@ func (c *client) SaveClientConfig(filename string) {
 	ioutil.WriteFile(filename, data, 0644)
 }
 
-func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient mqtt.Client) Client {
+func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Client, tankSensors tanksensors.Client, mqttClient mqtt.Client, evseClient *openevse.Client) Client {
 	prometheus.MustRegister(
 		batteryAmpHours,
 		batteryAutoChargeStarted,
@@ -97,6 +99,7 @@ func NewClient(config models.Config, habClient openHab.Client, bmvClient *bmv.Cl
 		bmvClient:   bmvClient,
 		tankSensors: tankSensors,
 		mqttClient:  mqttClient,
+		evseClient:  evseClient,
 		syncFuncs:   make([]func(), 0),
 	}
 }
@@ -138,6 +141,17 @@ func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []
 	accessories, ok = c.registerBatteryLevel(id, "House Battery", accessories)
 	if ok {
 		itemIDs["House Battery"] = id
+	}
+	id, ok = itemIDs["EVSE"]
+	if !ok {
+		id = maxID
+		maxID++
+	}
+	if c.config.EVSEConfiguration.Enabled && c.config.EVSEConfiguration.Address != "" {
+		accessories, ok = c.registerEVSE(id, c.evseClient, "EVSE", accessories)
+	}
+	if ok {
+		itemIDs["EVSE"] = id
 	}
 	var foundTankSensors int
 	if c.tankSensors != nil {
@@ -307,6 +321,9 @@ func (c *client) registerTankSensors(itemIds map[string]uint64, accessories []*a
 	for i, device := range devices {
 		deviceConfig, ok := c.matchLevelSensorWithConfig(device.GetAddress())
 		if !ok {
+			if !c.config.TankSensors.RegisterNew {
+				continue
+			}
 			deviceConfig = models.MopekaLevelSensor{
 				Address:   device.GetAddress(),
 				Name:      fmt.Sprintf("Tank %v", i+1),
@@ -603,7 +620,7 @@ func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name st
 	})
 	ac.Switch.On.OnValueRemoteUpdate(item.GetChangeFunction())
 	if name == "Electric Water Heater" && c.mqttClient.IsEnabled() {
-		c.mqttClient.RegisterHPDevice(&item)
+		c.mqttClient.RegisterOpenHabHPDevice(&item)
 	}
 	lastValue := ""
 	syncFunc := func() {
@@ -617,6 +634,32 @@ func (c *client) registerSwitch(id uint64, item openHab.EnrichedItemDTO, name st
 	c.syncFuncs = append(c.syncFuncs, syncFunc)
 	accessories = append(accessories, ac.Accessory)
 	return accessories
+}
+
+func (c *client) registerEVSE(id uint64, item *openevse.Client, name string, accessories []*accessory.Accessory) ([]*accessory.Accessory, bool) {
+	if item == nil {
+		return accessories, false
+	}
+	ac := accessory.NewSwitch(accessory.Info{
+		Name: name,
+		ID:   id,
+	})
+	ac.Switch.On.OnValueRemoteUpdate(item.Enable)
+	if c.mqttClient.IsEnabled() {
+		c.mqttClient.RegisterEVSEHPDevice(item)
+	}
+	lastValue := ""
+	syncFunc := func() {
+		state, _ := item.GetState()
+		if state != lastValue {
+			ac.Switch.On.SetValue(state == "ON")
+		}
+		lastValue = state
+	}
+	syncFunc()
+	c.syncFuncs = append(c.syncFuncs, syncFunc)
+	accessories = append(accessories, ac.Accessory)
+	return accessories, true
 }
 
 func (c *client) registerDimmer(id uint64, item openHab.EnrichedItemDTO, name string, accessories []*accessory.Accessory) []*accessory.Accessory {
@@ -716,7 +759,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		return accessories
 	}
 	if c.mqttClient.IsEnabled() {
-		c.mqttClient.RegisterHPDevice(&modeThing)
+		c.mqttClient.RegisterOpenHabHPDevice(&modeThing)
 	}
 	statusThing, ok := getThingFromChannels(channels, thing.UID, "status", c.habClient)
 	if !ok {

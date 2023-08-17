@@ -3,6 +3,7 @@ package mqtt
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jgulick48/rv-homekit/internal/openevse"
 	"log"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ type Client interface {
 	GetBatteryClient() bmv.Client
 	GetVEBusClient() vebus.Client
 	IsEnabled() bool
-	RegisterHPDevice(item *openHab.EnrichedItemDTO)
+	RegisterOpenHabHPDevice(item *openHab.EnrichedItemDTO)
+	RegisterEVSEHPDevice(item *openevse.Client)
 	SetMaxChargeCurrent(value float64)
 	SetMaxInputCurrent(value float64)
 }
@@ -79,8 +81,15 @@ func (c *client) IsEnabled() bool {
 	return c.config.Host != ""
 }
 
-func (c *client) RegisterHPDevice(item *openHab.EnrichedItemDTO) {
-	c.vebus.RegisterHPDevice(item)
+func (c *client) RegisterOpenHabHPDevice(item *openHab.EnrichedItemDTO) {
+	if item != nil {
+		c.vebus.RegisterHPDevice(item.Name, item.Label, item)
+	}
+}
+func (c *client) RegisterEVSEHPDevice(item *openevse.Client) {
+	if item != nil {
+		c.vebus.RegisterHPDevice("EVSE", "EVSE", item)
+	}
 }
 
 func (c *client) Connect() {
