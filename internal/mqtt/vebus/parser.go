@@ -16,7 +16,7 @@ import (
 	"github.com/jgulick48/rv-homekit/internal/models"
 )
 
-func NewVeBusClient(dvccConfig models.CurrentLimitConfiguration, inputLimits models.CurrentLimitConfiguration, chargeCurrentFunc func(value float64), inputCurrentFunc func(value float64)) Client {
+func NewVeBusClient(dvccConfig models.CurrentLimitConfiguration, inputLimits models.CurrentLimitConfiguration, shoreDetection models.ShoreDetection, chargeCurrentFunc func(value float64), inputCurrentFunc func(value float64)) Client {
 	client := Client{
 		values:            map[string]vebusMetric{},
 		mux:               sync.RWMutex{},
@@ -24,6 +24,8 @@ func NewVeBusClient(dvccConfig models.CurrentLimitConfiguration, inputLimits mod
 		inputLimits:       inputLimits,
 		chargeCurrentFunc: chargeCurrentFunc,
 		inputCurrentFunc:  inputCurrentFunc,
+		shoreDetection:    shoreDetection,
+		startupTime:       time.Now(),
 		automation: Automation{
 			HpDevices:             make(map[string]hpDevice, 0),
 			LastShutdownTime:      0,
@@ -71,8 +73,10 @@ type Client struct {
 	automation        Automation
 	dvccConfig        models.CurrentLimitConfiguration
 	inputLimits       models.CurrentLimitConfiguration
+	shoreDetection    models.ShoreDetection
 	chargeCurrentFunc func(value float64)
 	inputCurrentFunc  func(value float64)
+	startupTime       time.Time
 }
 
 type Automation struct {
@@ -88,9 +92,10 @@ type HPDevice interface {
 }
 
 type hpDevice struct {
-	HPDevice `json:"-"`
-	Name     string `json:"name"`
-	State    string `json:"state"`
+	HPDevice   `json:"-"`
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	Registered bool   `json:"-"`
 }
 
 func (c *Client) GetAmperageOut() float64 {
@@ -151,13 +156,15 @@ func (c *Client) RegisterHPDevice(id, name string, item HPDevice) {
 	if !ok {
 		enabled, _ := item.GetState()
 		c.automation.HpDevices[id] = hpDevice{
-			Name:     name,
-			HPDevice: item,
-			State:    enabled,
+			Name:       name,
+			HPDevice:   item,
+			State:      enabled,
+			Registered: true,
 		}
 	} else {
 		device.HPDevice = item
 		device.Name = name
+		device.Registered = true
 		c.automation.HpDevices[id] = device
 	}
 	c.SaveToFile("")
@@ -267,19 +274,21 @@ func (c *Client) parseACLineMeasurements(tags []string, segments []string) ([]st
 func (c *Client) checkForShutdown(segments []string, value float64) {
 	switch segments[len(segments)-1] {
 	case "V":
-		if value > 105 {
-			if c.automation.ShutdownDueToPowerOut {
-				if float64(time.Now().Unix()) > c.automation.LastShutdownTime+(time.Minute.Seconds()) {
-					c.resetHPDevices()
-					c.automation.ShutdownDueToPowerOut = false
+		if c.shoreDetection.Enabled && time.Now().After(c.startupTime.Add(c.shoreDetection.StartupDelay.Duration)) {
+			if (c.shoreDetection.MinVoltage > 0 && value > c.shoreDetection.MinVoltage) || value > 105 {
+				if c.automation.ShutdownDueToPowerOut {
+					if float64(time.Now().Unix()) > c.automation.LastShutdownTime+(time.Minute.Seconds()) {
+						c.resetHPDevices()
+						c.automation.ShutdownDueToPowerOut = false
+					}
 				}
-			}
-		} else {
-			c.automation.LastShutdownTime = float64(time.Now().Unix())
-			if !c.automation.ShutdownDueToPowerOut {
-				log.Printf("Shutting high power devices down due to power failure. Voltage at %v", value)
-				c.shutdownHPDevices()
-				c.automation.ShutdownDueToPowerOut = true
+			} else {
+				c.automation.LastShutdownTime = float64(time.Now().Unix())
+				if !c.automation.ShutdownDueToPowerOut {
+					log.Printf("Shutting high power devices down due to power failure. Voltage at %v", value)
+					c.shutdownHPDevices()
+					c.automation.ShutdownDueToPowerOut = true
+				}
 			}
 		}
 	}
@@ -302,6 +311,10 @@ func (c *Client) shutdownHPDevices() {
 		}
 	}
 	for id, item := range c.automation.HpDevices {
+		if !item.Registered {
+			log.Printf("Device with ID \"%s\" was not registered on startup, skipping", id)
+			continue
+		}
 		log.Printf("Checking %s to see if shutdown is needed due to power failure.\n", id)
 		if !item.InHPState() {
 			log.Printf("Item %s is not in high power state, not changing status", id)
