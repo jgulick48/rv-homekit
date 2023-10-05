@@ -419,7 +419,9 @@ func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessor
 				tankSensorRSSI.WithLabelValues(name).Set(float64(device.GetRSSI()))
 			}
 		} else {
-			log.Printf("Device with name of %s and address of %s was not found.", deviceConfig.Name, deviceConfig.Address)
+			if c.config.Debug {
+				log.Printf("Device with name of %s and address of %s was not found.", deviceConfig.Name, deviceConfig.Address)
+			}
 		}
 	}
 	syncFunc()

@@ -19,7 +19,7 @@ func (s *MQTTTest) SetupTest() {
 		Port:     1883,
 		DeviceID: "d41243b4f71d",
 	}
-	s.mqtt = NewClient(config, models.CurrentLimitConfiguration{}, models.CurrentLimitConfiguration{}, false)
+	s.mqtt = NewClient(config, models.CurrentLimitConfiguration{}, models.CurrentLimitConfiguration{}, models.ShoreDetection{}, false)
 }
 
 func (s *MQTTTest) Test_shouldShutOff_SOC() {

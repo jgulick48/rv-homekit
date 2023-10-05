@@ -26,6 +26,13 @@ type Config struct {
 	SyncTimer               string                    `json:"syncTimer"`
 	GeneratorOffDelay       Duration                  `json:"generatorOffDelay"`
 	EVSEConfiguration       EVSEConfiguration         `json:"evseConfiguration"`
+	ShoreDetection          ShoreDetection            `json:"shoreDetection"`
+}
+
+type ShoreDetection struct {
+	MinVoltage   float64  `json:"minVoltage"`
+	Enabled      bool     `json:"enabled"`
+	StartupDelay Duration `json:"startupDelay"`
 }
 
 type EVSEConfiguration struct {

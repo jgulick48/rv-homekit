@@ -30,7 +30,7 @@ type Client interface {
 	SetMaxInputCurrent(value float64)
 }
 
-func NewClient(config models.MQTTConfiguration, dvccConfig models.CurrentLimitConfiguration, inputConfig models.CurrentLimitConfiguration, debug bool) Client {
+func NewClient(config models.MQTTConfiguration, dvccConfig models.CurrentLimitConfiguration, inputConfig models.CurrentLimitConfiguration, shoreDetection models.ShoreDetection, debug bool) Client {
 	if config.UseVRM {
 		if config.DeviceID != "" {
 			sum := 0
@@ -53,7 +53,7 @@ func NewClient(config models.MQTTConfiguration, dvccConfig models.CurrentLimitCo
 			debug:        debug,
 			lastReceived: time.Now(),
 		}
-		c.vebus = vebus.NewVeBusClient(dvccConfig, inputConfig, c.SetMaxChargeCurrent, c.SetMaxInputCurrent)
+		c.vebus = vebus.NewVeBusClient(dvccConfig, inputConfig, shoreDetection, c.SetMaxChargeCurrent, c.SetMaxInputCurrent)
 		return &c
 	}
 	return &client{config: config}
