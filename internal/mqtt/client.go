@@ -70,6 +70,7 @@ type client struct {
 	pv           pv.Client
 	debug        bool
 	hasDVCC      bool
+	hasMaxInput  bool
 	lastReceived time.Time
 }
 
@@ -115,9 +116,9 @@ func (c *client) Connect() {
 	}
 	c.sub()
 	defer c.mqttClient.Disconnect(250)
+	c.publishHASensors()
 	c.keepAlive()
 }
-
 func (c *client) keepAlive() {
 	ticker := time.NewTicker(5 * time.Second)
 	for {
@@ -132,6 +133,115 @@ func (c *client) keepAlive() {
 			token := c.mqttClient.Publish(fmt.Sprintf("R/%s/keepalive", c.config.DeviceID), 0, false, "[\"#\"]")
 			token.Wait()
 		}
+	}
+}
+
+func (c *client) publishHASensors() {
+	log.Println("Publishing HAS sensors to mqtt")
+	sensorDevice := SensorDevice{
+		Manufacturer: "Victron",
+		Name:         c.config.DeviceID,
+		Identifiers:  []string{c.config.DeviceID},
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_battery_%s_soc", c.config.DeviceID, "288"),
+		Name:              "State of Charge",
+		StateTopic:        fmt.Sprintf("N/%s/battery/%s/Soc", c.config.DeviceID, "288"),
+		StateClass:        "measurement",
+		DeviceClass:       "battery",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "%",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing SOC sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/soc/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_%s_energy_invertertoacout", c.config.DeviceID, "276"),
+		Name:              "Inverter Output Energy",
+		StateTopic:        fmt.Sprintf("N/%s/vebus/%s/Energy/InverterToAcOut", c.config.DeviceID, "276"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing InverterToAcOut sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/e_eps/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_%s_energy_acin1toacout", c.config.DeviceID, "276"),
+		Name:              "Inverter Pass Through Energy L1",
+		StateTopic:        fmt.Sprintf("N/%s/vebus/%s/Energy/AcIn1ToAcOut", c.config.DeviceID, "276"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing AcIn1ToAcOut sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/e_pass/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_%s_energy_acin1toinverter", c.config.DeviceID, "276"),
+		Name:              "Grid Charge Total L1",
+		StateTopic:        fmt.Sprintf("N/%s/vebus/%s/Energy/AcIn1ToInverter", c.config.DeviceID, "276"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing AcIn1ToInverter sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/e_inv_in/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_%s_energy_acouttoacin1", c.config.DeviceID, "276"),
+		Name:              "Grid Output Total L1",
+		StateTopic:        fmt.Sprintf("N/%s/vebus/%s/Energy/AcOutToAcIn1", c.config.DeviceID, "276"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing AcOutToAcIn1 sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/e_inv_out_l1/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
+	for i := 0; i < 2; i++ {
+		if body, err := json.Marshal(SensorJSON{
+			UniqueId:          fmt.Sprintf("victron_%s_pv%v_yield", c.config.DeviceID, i),
+			Name:              fmt.Sprintf("Solar Energy MPPT %v", i),
+			StateTopic:        fmt.Sprintf("N/%s/solarcharger/%v/Yield/User", c.config.DeviceID, i),
+			StateClass:        "total_increasing",
+			DeviceClass:       "energy",
+			ValueTemplate:     "{{ value_json.value }}",
+			UnitOfMeasurement: "kWh",
+			Device:            sensorDevice,
+		}); err == nil {
+			log.Println("Publishing Yield sensor to mqtt")
+			token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/e_pv%v/config", c.config.DeviceID, i), 0, true, body)
+			token.Wait()
+		}
+	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_battery_%s_chargedEnergy", c.config.DeviceID, "288"),
+		Name:              "Charged Energy",
+		StateTopic:        fmt.Sprintf("N/%s/battery/%s/History/ChargedEnergy", c.config.DeviceID, "288"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing ChargedEngergy sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/batt_chrg/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
 	}
 }
 
@@ -231,14 +341,10 @@ func (c *client) SetMaxChargeCurrent(value float64) {
 }
 func (c *client) SetMaxInputCurrent(value float64) {
 	//Name of topic for max charge current settings (N/d41243b4f71d/vebus/276/Ac/ActiveIn/CurrentLimit)
-	if !c.hasDVCC {
-		log.Printf("System not configured for DVCC skipping max current setting")
-		return
-	}
 	if value < 0 {
 		return
 	}
-	log.Printf("Setting max charge current to %v", value)
+	log.Printf("Setting max input current to %v", value)
 	if !c.mqttClient.IsConnected() {
 		go c.mqttClient.Connect()
 	}

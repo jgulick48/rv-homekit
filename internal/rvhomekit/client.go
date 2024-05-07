@@ -648,7 +648,9 @@ func (c *client) registerEVSE(id uint64, item *openevse.Client, name string, acc
 	})
 	ac.Switch.On.OnValueRemoteUpdate(item.Enable)
 	if c.mqttClient.IsEnabled() {
-		c.mqttClient.RegisterEVSEHPDevice(item)
+		if c.config.EVSEConfiguration.Enabled && c.config.EVSEConfiguration.EnableControl {
+			c.mqttClient.RegisterEVSEHPDevice(item)
+		}
 	}
 	lastValue := ""
 	syncFunc := func() {

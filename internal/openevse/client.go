@@ -32,6 +32,9 @@ func (c *Client) GetState() (string, error) {
 }
 
 func (c *Client) SetState(state string) {
+	if !c.config.EnableControl {
+		return
+	}
 	switch state {
 	case "ON":
 		c.Enable(true)
@@ -42,7 +45,11 @@ func (c *Client) SetState(state string) {
 }
 
 func (c *Client) InHPState() bool {
-	return true
+	if !c.config.EnableControl {
+		return false
+	}
+	isEnabled, _ := c.IsEnabled()
+	return isEnabled
 }
 
 func NewClient(veClient vebus.Client, config models.EVSEConfiguration, httpClient *http.Client) Client {
@@ -51,8 +58,12 @@ func NewClient(veClient vebus.Client, config models.EVSEConfiguration, httpClien
 		httpClient:    httpClient,
 		config:        config,
 	}
-	ticker := time.NewTicker(10 * time.Second)
-	ticker2 := time.NewTicker(30 * time.Second)
+	var ticker, ticker2 *time.Ticker
+	ticker = time.NewTicker(10 * time.Second)
+	ticker2 = time.NewTicker(30 * time.Second)
+	if !config.EnableControl {
+		ticker2.Stop()
+	}
 	client.done = make(chan bool)
 	go func() {
 		for {

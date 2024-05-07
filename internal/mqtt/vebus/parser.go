@@ -334,7 +334,7 @@ func (c *Client) shutdownHPDevices() {
 
 func (c *Client) resetHPDevices() {
 	for id, item := range c.automation.HpDevices {
-		if item.State != "OFF" {
+		if item.Registered && item.State != "OFF" {
 			log.Printf("Setting item %s enabled to %v from False due to power restoration.", id, item.State)
 			item.SetState(item.State)
 		}

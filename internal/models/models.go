@@ -38,6 +38,7 @@ type ShoreDetection struct {
 type EVSEConfiguration struct {
 	Enabled          bool   `json:"enabled"`
 	Address          string `json:"address"`
+	EnableControl    bool   `json:"enableControl"`
 	MaxChargeCurrent int    `json:"maxChargeCurrent"`
 	MinCurrentBuffer int    `json:"minCurrentBuffer"`
 }
