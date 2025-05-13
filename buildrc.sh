@@ -1,2 +1,2 @@
-docker build -t jgulick48/rv-homekit:release-arm-0.0.12-rc$1 -f Dockerfile.arm .
-docker push jgulick48/rv-homekit:release-arm-0.0.12-rc$1
+#!/bin/sh
+docker buildx build --push --platform linux/arm/v7,linux/arm64/v8,linux/amd64 --tag jgulick48/rv-homekit:release-arm-0.0.12-rc$1 .

@@ -1,4 +1,6 @@
-FROM golang:1.19.1 as builder
+ARG ARCH=
+
+FROM ${ARCH}golang:1.24.1 AS builder
 
 WORKDIR /app
 
@@ -9,12 +11,14 @@ RUN go mod download
 
 COPY ./ ./
 
-RUN go test ./...
+
+RUN go generate ./...
 
 RUN GOOS=linux CGO_ENABLED=0 go build
 
-FROM alpine:3.16.2
+FROM ${ARCH}alpine:3.21.0
 
 COPY --from=builder /app/rv-homekit /bin/rv-homekit
+WORKDIR /var/lib/rv-homekit/
 
 CMD ["/bin/rv-homekit","-configFile=/var/lib/rv-homekit/config.json"]
