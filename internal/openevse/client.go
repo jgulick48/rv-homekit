@@ -227,7 +227,7 @@ func (c *Client) getConfig() (Config, error) {
 func (c *Client) setConfig(config Config) (ConfigUpdateResponse, error) {
 	bodyBytes, _ := json.Marshal(config)
 	body := bytes.NewBuffer(bodyBytes)
-	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/config", c.config.Address), body)
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/config", c.config.Address), body)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Printf("Error making request for item from openEVSE: %s", err)
