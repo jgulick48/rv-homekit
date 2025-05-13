@@ -243,6 +243,20 @@ func (c *client) publishHASensors() {
 		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/batt_chrg/config", c.config.DeviceID), 0, true, body)
 		token.Wait()
 	}
+	if body, err := json.Marshal(SensorJSON{
+		UniqueId:          fmt.Sprintf("victron_%s_battery_%s_dischargedEnergy", c.config.DeviceID, "288"),
+		Name:              "Discharged Energy",
+		StateTopic:        fmt.Sprintf("N/%s/battery/%s/History/DischargedEnergy", c.config.DeviceID, "288"),
+		StateClass:        "total_increasing",
+		DeviceClass:       "energy",
+		ValueTemplate:     "{{ value_json.value }}",
+		UnitOfMeasurement: "kWh",
+		Device:            sensorDevice,
+	}); err == nil {
+		log.Println("Publishing dischargedEngergy sensor to mqtt")
+		token := c.mqttClient.Publish(fmt.Sprintf("homeassistant/sensor/%s/batt_dischrg/config", c.config.DeviceID), 0, true, body)
+		token.Wait()
+	}
 }
 
 func (c *client) messagePubHandler(client mqtt.Client, msg mqtt.Message) {

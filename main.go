@@ -64,6 +64,7 @@ func startService() {
 			log.Printf("Error creating stats client %s", err.Error())
 		} else {
 			metrics.StatsEnabled = true
+			metrics.Debug = config.StatsDebug
 		}
 	}
 	var bmvClient *bmv.Client

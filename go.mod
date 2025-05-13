@@ -1,6 +1,6 @@
 module github.com/jgulick48/rv-homekit
 
-go 1.19
+go 1.20
 
 require (
 	github.com/DataDog/datadog-go v4.8.3+incompatible

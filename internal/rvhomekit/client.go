@@ -111,8 +111,9 @@ func (c *client) RunSyncFunctions() {
 	}
 	end := time.Now()
 	if metrics.StatsEnabled {
-		_ = metrics.Metrics.Gauge("syncFunc.duration", float64(end.Sub(start).Milliseconds()), []string{fmt.Sprintf("name:%s", c.config.BridgeName)}, 1)
+		metrics.SendGaugeMetricWithRate("syncFunc.duration", float64(end.Sub(start).Milliseconds()), []string{fmt.Sprintf("name:%s", c.config.BridgeName)}, 1)
 	}
+	log.Printf("Sync functions took %f seconds", end.Sub(start).Seconds())
 }
 
 func (c *client) GetAccessoriesFromOpenHab(things []openHab.EnrichedThingDTO) []*accessory.Accessory {
@@ -265,37 +266,37 @@ func (c *client) registerBatteryLevel(id uint64, name string, accessories []*acc
 		}
 		if metrics.StatsEnabled {
 			if ok {
-				_ = metrics.Metrics.Gauge("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.stateofcharge", soc, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryStateOfCharge.WithLabelValues(name).Set(soc)
 			}
 			if current, ok := bmvClient.GetBatteryCurrent(); ok {
-				_ = metrics.Metrics.Gauge("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.current", current, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryCurrent.WithLabelValues(name).Set(current)
 			}
 			if voltage, ok := bmvClient.GetBatteryVoltage(); ok {
-				_ = metrics.Metrics.Gauge("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.voltage", voltage, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryVolts.WithLabelValues(name).Set(voltage)
 			}
 			if amps, ok := bmvClient.GetConsumedAmpHours(); ok {
-				_ = metrics.Metrics.Gauge("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.ampHours", amps, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryAmpHours.WithLabelValues(name).Set(amps)
 			}
 			if watts, ok := bmvClient.GetPower(); ok {
-				_ = metrics.Metrics.Gauge("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.watts", watts, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryWatts.WithLabelValues(name).Set(watts)
 			}
 			if temp, ok := bmvClient.GetBatteryTemperature(); ok {
-				_ = metrics.Metrics.Gauge("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.celsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryTemperature.WithLabelValues(name, "celsius").Set(temp)
-				_ = metrics.Metrics.Gauge("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.fahrenheit", (temp*1.8)+32, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryTemperature.WithLabelValues(name, "fahrenheit").Set((temp * 1.8) + 32)
 			}
 			if timeRemaining, ok := bmvClient.GetTimeToGo(); ok {
-				_ = metrics.Metrics.Gauge("battery.timeRemaining", timeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.timeRemaining", timeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryTimeRemaining.WithLabelValues(name).Set(timeRemaining)
 			}
 			if chargeTimeRemaining, ok := bmvClient.GetChargeTimeRemaining(); ok {
-				_ = metrics.Metrics.Gauge("battery.chargeTimeRemaining", chargeTimeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("battery.chargeTimeRemaining", chargeTimeRemaining, []string{fmt.Sprintf("name:%s", name)}, 1)
 				batteryChargeTimeRemaining.WithLabelValues(name).Set(chargeTimeRemaining)
 			}
 		}
@@ -401,21 +402,21 @@ func (c *client) registerTankSensor(id uint64, accessories []*accessory.Accessor
 				log.Printf("got new tank level of %v for %s", level, name)
 			}
 			if metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name), fmt.Sprintf("type:%s", device.GetSensorType())}, 1)
+				metrics.SendGaugeMetricWithRate("tank.level", level, []string{fmt.Sprintf("name:%s", name), fmt.Sprintf("type:%s", device.GetSensorType())}, 1)
 				tankLevel.WithLabelValues(name, device.GetSensorType()).Set(level)
-				_ = metrics.Metrics.Gauge("tank.levelMM", device.GetTankLevelMM(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.levelMM", device.GetTankLevelMM(), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankLevelMM.WithLabelValues(name).Set(device.GetTankLevelMM())
-				_ = metrics.Metrics.Gauge("tank.tempCelsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.tempCelsius", temp, []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankTempCelsius.WithLabelValues(name).Set(temp)
-				_ = metrics.Metrics.Gauge("tank.tempFahrenheit", device.GetTempFahrenheit(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.tempFahrenheit", device.GetTempFahrenheit(), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankTempFahrenheit.WithLabelValues(name).Set(device.GetTempFahrenheit())
-				_ = metrics.Metrics.Gauge("tank.batteryPercent", float64(device.GetBatteryLevel()), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.batteryPercent", float64(device.GetBatteryLevel()), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankBatteryPercent.WithLabelValues(name).Set(float64(device.GetBatteryLevel()))
-				_ = metrics.Metrics.Gauge("tank.batteryVoltage", device.GetBatteryVoltage(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.batteryVoltage", device.GetBatteryVoltage(), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankBatteryVoltage.WithLabelValues(name).Set(device.GetBatteryVoltage())
-				_ = metrics.Metrics.Gauge("tank.sensorQuality", device.GetReadQuality(), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.sensorQuality", device.GetReadQuality(), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankSensorQuality.WithLabelValues(name).Set(device.GetReadQuality())
-				_ = metrics.Metrics.Gauge("tank.sensorRSSI", float64(device.GetRSSI()), []string{fmt.Sprintf("name:%s", name)}, 1)
+				metrics.SendGaugeMetricWithRate("tank.sensorRSSI", float64(device.GetRSSI()), []string{fmt.Sprintf("name:%s", name)}, 1)
 				tankSensorRSSI.WithLabelValues(name).Set(float64(device.GetRSSI()))
 			}
 		} else {
@@ -443,7 +444,7 @@ func (c *client) registerTankLevel(id uint64, item openHab.EnrichedItemDTO, name
 		item.GetCurrentValue()
 		level, err := strconv.ParseFloat(item.State, 64)
 		if err == nil && metrics.StatsEnabled {
-			_ = metrics.Metrics.Gauge("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
+			metrics.SendGaugeMetricWithRate("tank.level", level, []string{fmt.Sprintf("name:%s", name)}, 1)
 			tankLevel.WithLabelValues(name, "OneControl").Set(level)
 		}
 		if item.State != lastState {
@@ -510,13 +511,13 @@ func (c *client) registerGeneratorAutomation(id uint64, generatorAutomation auto
 			if lastState {
 				value = 1
 			}
-			_ = metrics.Metrics.Gauge("battery.autocharge.started", value, []string{}, 1)
+			metrics.SendGaugeMetricWithRate("battery.autocharge.started", value, []string{}, 1)
 			batteryAutoChargeStarted.WithLabelValues().Set(value)
 			if generatorAutomation.IsEnabled() {
-				_ = metrics.Metrics.Gauge("battery.autocharge.state", 1, []string{}, 1)
+				metrics.SendGaugeMetricWithRate("battery.autocharge.state", 1, []string{}, 1)
 				batteryAutoChargeState.WithLabelValues().Set(1)
 			} else {
-				_ = metrics.Metrics.Gauge("battery.autocharge.state", 0, []string{}, 1)
+				metrics.SendGaugeMetricWithRate("battery.autocharge.state", 0, []string{}, 1)
 				batteryAutoChargeState.WithLabelValues().Set(0)
 			}
 		}
@@ -590,7 +591,7 @@ func (c *client) registerGenerator(id uint64, thing openHab.EnrichedThingDTO, ac
 			ac.Switch.On.SetValue(stateThing.GetCurrentState())
 		}
 		if metrics.StatsEnabled {
-			_ = metrics.Metrics.Gauge("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
+			metrics.SendGaugeMetricWithRate("generator.status", float64(c.getGeneratorStatusFromString(stateThing.State)), []string{fmt.Sprintf("name:%s", thing.Label)}, 1)
 			generatorStatus.WithLabelValues(thing.Label).Set(float64(c.getGeneratorStatusFromString(stateThing.State)))
 		}
 		lastValue = stateThing.State
@@ -823,7 +824,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 			log.Printf("Invalid state for current temprature. Got %s", currentTempThing.State)
 		} else {
 			if metrics.StatsEnabled {
-				_ = metrics.Metrics.Gauge("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+				metrics.SendGaugeMetricWithRate("hvac.temperature", currentTemp, []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 				hvacTemperature.WithLabelValues(metricName[0]).Set(currentTemp)
 			}
 			if units == 1 {
@@ -838,7 +839,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		}
 		currentStatus := c.getHVACStatusFromString(statusThing.State)
 		if metrics.StatsEnabled {
-			_ = metrics.Metrics.Gauge("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+			metrics.SendGaugeMetricWithRate("hvac.currentstatus", float64(c.getHVACStatusNameFromString(statusThing.State)), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 			hvacCurrentStatus.WithLabelValues(metricName[0]).Set(float64(c.getHVACStatusNameFromString(statusThing.State)))
 		}
 		if currentHVACState != statusThing.State {
@@ -846,7 +847,7 @@ func (c *client) registerThermostat(id uint64, thing openHab.EnrichedThingDTO, a
 		}
 		currentMode := getHVACModeFromString(modeThing.State)
 		if metrics.StatsEnabled {
-			_ = metrics.Metrics.Gauge("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
+			metrics.SendGaugeMetricWithRate("hvac.currentmode", float64(currentMode), []string{fmt.Sprintf("name:%s", metricName[0])}, 1)
 			hvacCurrentMode.WithLabelValues(metricName[0]).Set(float64(currentMode))
 		}
 		if currentHVACMode != modeThing.State {

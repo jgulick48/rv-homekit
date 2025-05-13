@@ -11,7 +11,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -111,16 +110,11 @@ func (c *Client) Enable(shouldEnable bool) {
 }
 
 func (c *Client) GetChargeLimitSetting() (int, error) {
-	rapi := "$GE"
-	result, err := c.processGetRequest(rapi)
+	result, err := c.getConfig()
 	if err != nil {
 		return 0, err
 	}
-	retMessage := strings.Split(result.RET, " ")
-	if len(retMessage) == 3 {
-		return strconv.Atoi(retMessage[1])
-	}
-	return 0, fmt.Errorf("did not get expected result got %s", result.RET)
+	return result.MaxCurrentSoft, nil
 }
 
 func (c *Client) SetChargeLimitSetting(limit int) {
@@ -131,15 +125,17 @@ func (c *Client) SetChargeLimitSetting(limit int) {
 		limit = c.config.MaxChargeCurrent
 	}
 	log.Printf("Setting new charge current limit to %v", limit)
-	rapi := fmt.Sprintf("$SC+%v", limit)
-	result, err := c.processGetRequest(rapi)
+	config := Config{
+		MaxCurrentSoft: limit,
+	}
+	result, err := c.setConfig(config)
 	if err != nil {
 		log.Printf("Error setting charge limit setting %s", err)
 		return
 	}
-	retMessage := strings.Split(result.RET, " ")
-	if retMessage[0] == "$OK" {
-		log.Printf("Updated charging limit with result %s", result.RET)
+	retMessage := strings.Split(result.Msg, " ")
+	if retMessage[0] == "done" {
+		log.Printf("Updated charging limit with result %s", result.Msg)
 	}
 }
 
@@ -203,6 +199,50 @@ func (c *Client) processGetRequest(rapi string) (CommandResult, error) {
 	if err != nil {
 		log.Printf("Unable to decod message from openEVSE: %s", err)
 		return response, err
+	}
+	return response, nil
+}
+
+func (c *Client) getConfig() (Config, error) {
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/config", c.config.Address), nil)
+	var response Config
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request for item from openEVSE: %s", err)
+		return response, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Invalid response from openEVSE. Got %v expecting 200", resp.StatusCode)
+		return response, errors.New(resp.Status)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		log.Printf("Unable to decod message from openEVSE: %s", err)
+		return response, err
+	}
+	return response, nil
+}
+
+func (c *Client) setConfig(config Config) (ConfigUpdateResponse, error) {
+	bodyBytes, _ := json.Marshal(config)
+	body := bytes.NewBuffer(bodyBytes)
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/config", c.config.Address), body)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Error making request for item from openEVSE: %s", err)
+		return ConfigUpdateResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Invalid response from openEVSE. Got %v expecting 200", resp.StatusCode)
+		return ConfigUpdateResponse{}, errors.New(resp.Status)
+	}
+	var response ConfigUpdateResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		log.Printf("Unable to decod message from openEVSE: %s", err)
+		return ConfigUpdateResponse{}, err
 	}
 	return response, nil
 }

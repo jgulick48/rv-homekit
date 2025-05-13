@@ -21,6 +21,7 @@ type Config struct {
 	BMVConfig               BMVConfig                 `json:"bmvConfig"`
 	Automation              map[string]Automation     `json:"automation"`
 	StatsServer             string                    `json:"statsServer"`
+	StatsDebug              bool                      `json:"statsDebug"`
 	ThermostatRange         TemperatureRange          `json:"thermostatRange"`
 	TankSensors             MopkeaProCheck            `json:"tankSensors"`
 	SyncTimer               string                    `json:"syncTimer"`

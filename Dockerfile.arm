@@ -1,4 +1,4 @@
-FROM golang:1.19.1 as builder
+FROM golang:1.20.5 as builder
 
 WORKDIR /app
 
@@ -11,9 +11,9 @@ COPY ./ ./
 
 RUN go test ./...
 
-RUN GOOS=linux GOARCH=arm GOARM=5 CGO_ENABLED=0 go build
+RUN GOOS=linux GOARCH=arm64 GOARM=5 CGO_ENABLED=0 go build
 
-FROM alpine:3.16.2
+FROM alpine:3.20.1
 
 COPY --from=builder /app/rv-homekit /bin/rv-homekit
 WORKDIR /var/lib/rv-homekit/
